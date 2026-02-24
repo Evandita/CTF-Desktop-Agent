@@ -1,0 +1,28 @@
+llm:
+  # Provider options: "claude", "ollama", "claude-code"
+  provider: "claude"
+  model: null
+  temperature: 0.0
+  max_tokens: 4096
+
+container:
+  image_name: "ctf-desktop-agent:latest"
+  container_name: "ctf-agent-desktop"
+  vnc_port: 5900
+  novnc_port: 6080
+  api_port: 8888
+  screen_width: 1024
+  screen_height: 768
+  memory_limit: "4g"
+  cpu_count: 2
+
+agent:
+  max_iterations: 50
+  max_images_in_context: 10
+  auto_screenshot_after_action: true
+
+web_ui:
+  host: "0.0.0.0"
+  port: 8080
+
+log_level: "INFO"

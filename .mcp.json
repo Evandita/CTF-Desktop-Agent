@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ctf-desktop": {
+      "command": "python",
+      "args": ["-m", "ctf_agent.interfaces.mcp_server"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTF Desktop Agent</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="layout">
+        <!-- Left: Live Desktop View -->
+        <div class="desktop-panel">
+            <div class="panel-header">
+                <h2>Live Desktop</h2>
+                <span id="container-status" class="status-badge">Connecting...</span>
+            </div>
+            <iframe id="vnc-frame" src="" frameborder="0"></iframe>
+        </div>
+
+        <!-- Right: Chat + Status -->
+        <div class="agent-panel">
+            <div class="chat-container">
+                <div class="panel-header">
+                    <h2>Agent Chat</h2>
+                    <div class="header-actions">
+                        <button onclick="clearContext()" title="Clear context">Clear</button>
+                        <button onclick="stopAgent()" title="Stop agent">Stop</button>
+                    </div>
+                </div>
+                <div id="chat-messages" class="chat-messages"></div>
+                <div class="chat-input">
+                    <input
+                        type="text"
+                        id="message-input"
+                        placeholder="Describe your CTF task..."
+                        onkeydown="if(event.key==='Enter') sendMessage()"
+                    />
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+
+            <div class="status-panel">
+                <div class="panel-header">
+                    <h2>Status</h2>
+                </div>
+                <div id="status-info" class="status-info">
+                    <div>Messages: <span id="msg-count">0</span></div>
+                    <div>Images: <span id="img-count">0</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
