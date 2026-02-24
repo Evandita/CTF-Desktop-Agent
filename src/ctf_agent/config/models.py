@@ -36,9 +36,24 @@ class WebUIConfig(BaseModel):
     port: int = 8080
 
 
+class HITLConfig(BaseModel):
+    """Human-in-the-Loop configuration."""
+    enabled: bool = False
+    tool_approval: bool = False
+    tools_requiring_approval: list[str] = Field(default_factory=lambda: ["all"])
+    tools_auto_approved: list[str] = Field(
+        default_factory=lambda: ["ctf_screenshot", "ctf_container_status"]
+    )
+    checkpoint_enabled: bool = False
+    checkpoint_interval: int = 5
+    agent_questions: bool = False
+    approval_timeout: int = 0  # seconds, 0 = no timeout
+
+
 class AppConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     container: ContainerConfig = Field(default_factory=ContainerConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     web_ui: WebUIConfig = Field(default_factory=WebUIConfig)
+    hitl: HITLConfig = Field(default_factory=HITLConfig)
     log_level: str = "INFO"

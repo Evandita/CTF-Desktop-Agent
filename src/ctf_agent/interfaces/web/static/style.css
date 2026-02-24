@@ -231,6 +231,93 @@ body {
     font-weight: 600;
 }
 
+/* HITL Approval dialogs */
+.message.approval-request {
+    background: #2a1a0a;
+    border: 1px solid #cc8833;
+    border-left: 3px solid #ff9900;
+    padding: 12px;
+}
+
+.approval-header {
+    font-weight: 600;
+    color: #ff9900;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.approval-tool {
+    color: #ffbb44;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.approval-args {
+    background: #1a1a0a;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    max-height: 150px;
+    overflow-y: auto;
+    margin: 8px 0;
+}
+
+.approval-question {
+    color: #ffdd88;
+    font-size: 13px;
+    margin: 8px 0;
+}
+
+.approval-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+}
+
+.approval-message {
+    flex: 1;
+    padding: 6px 10px;
+    background: #0a0a14;
+    color: #e0e0e0;
+    border: 1px solid #3a3a4e;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.btn-approve {
+    padding: 6px 16px;
+    background: #2a6a2a;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-approve:hover {
+    background: #3a8a3a;
+}
+
+.btn-reject {
+    padding: 6px 16px;
+    background: #6a2a2a;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-reject:hover {
+    background: #8a3a3a;
+}
+
+.approved { color: #4caf50; font-weight: 600; }
+.rejected { color: #f44336; font-weight: 600; }
+
+.hitl-enabled { color: #ff9900; font-weight: 600; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;

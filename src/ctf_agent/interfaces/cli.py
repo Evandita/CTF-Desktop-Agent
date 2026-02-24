@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import threading
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -60,6 +62,10 @@ def _make_event_handler():
             ))
         elif event.event_type == "text":
             console.print(Markdown(event.data["text"]))
+        elif event.event_type == "tool_approval_requested":
+            console.print(f"[orange1]Awaiting approval for: {event.data['tool']}[/orange1]")
+        elif event.event_type == "tool_rejected":
+            console.print(f"[red]Tool rejected: {event.data['tool']} — {event.data.get('reason', '')}[/red]")
         elif event.event_type == "done":
             console.print("[bold green]--- Agent completed ---[/bold green]")
     return handle_event
@@ -85,12 +91,132 @@ def _make_claude_code_event_handler():
             if len(output) > 500:
                 output = output[:500] + "...(truncated)"
             console.print(Panel(output, title="Result", border_style=style))
+        elif event.event_type == "checkpoint":
+            console.print(Panel(
+                event.data.get("message", "Checkpoint reached."),
+                title="[bold yellow]Checkpoint[/bold yellow]",
+                border_style="yellow",
+            ))
         elif event.event_type == "error":
             console.print(f"[red]{event.data.get('text', 'Unknown error')}[/red]")
         elif event.event_type == "done":
             console.print("[bold green]--- Claude Code completed ---[/bold green]")
     return handle_event
 
+
+# ---------------------------------------------------------------------------
+# CLI HITL approval handler
+# ---------------------------------------------------------------------------
+
+class CLIApprovalHandler:
+    """Handles HITL approval requests by prompting the user in the terminal."""
+
+    def __init__(self, hitl_manager, loop):
+        self._manager = hitl_manager
+        self._loop = loop
+        self._manager.set_notification_callback(self._on_request)
+
+    def _on_request(self, request):
+        """Called when a new approval request is created. Spawns a prompt thread."""
+        thread = threading.Thread(
+            target=self._prompt_user, args=(request,), daemon=True
+        )
+        thread.start()
+
+    def _prompt_user(self, request):
+        """Prompt the user for approval in the terminal (runs in a thread)."""
+        from ctf_agent.hitl.manager import (
+            ApprovalResponse, ApprovalDecision, ApprovalType,
+        )
+
+        console.print()  # Blank line for visual separation
+
+        if request.approval_type == ApprovalType.TOOL_APPROVAL:
+            console.print(Panel(
+                f"[bold yellow]Tool:[/bold yellow] {request.data.get('tool_name', '')}\n"
+                f"[dim]{json.dumps(request.data.get('tool_input', {}), indent=2)}[/dim]",
+                title="[bold orange1]Tool Approval Required[/bold orange1]",
+                border_style="orange1",
+            ))
+        elif request.approval_type == ApprovalType.CHECKPOINT:
+            console.print(Panel(
+                f"Iteration: {request.data.get('iteration', request.data.get('tool_calls', '?'))}",
+                title="[bold yellow]Checkpoint[/bold yellow]",
+                border_style="yellow",
+            ))
+        elif request.approval_type == ApprovalType.AGENT_QUESTION:
+            console.print(Panel(
+                request.data.get("question", request.data.get("tool_input", {}).get("question", "")),
+                title="[bold cyan]Agent Question[/bold cyan]",
+                border_style="cyan",
+            ))
+
+        try:
+            if request.approval_type == ApprovalType.AGENT_QUESTION:
+                answer = console.input("[bold cyan]Your answer: [/bold cyan]").strip()
+                decision = ApprovalDecision.APPROVE
+                message = answer
+            else:
+                answer = console.input(
+                    "[bold orange1](y)es / (n)o / or type a message: [/bold orange1]"
+                ).strip()
+                if answer.lower() in ("y", "yes", ""):
+                    decision = ApprovalDecision.APPROVE
+                    message = ""
+                elif answer.lower() in ("n", "no"):
+                    decision = ApprovalDecision.REJECT
+                    message = ""
+                else:
+                    # Any other text = approve with message
+                    decision = ApprovalDecision.APPROVE
+                    message = answer
+        except (EOFError, KeyboardInterrupt):
+            decision = ApprovalDecision.REJECT
+            message = "Interrupted"
+
+        response = ApprovalResponse(
+            request_id=request.request_id,
+            decision=decision,
+            message=message,
+        )
+
+        # Thread-safe: schedule on the event loop
+        self._loop.call_soon_threadsafe(
+            self._manager.submit_response, request.request_id, response
+        )
+
+
+# ---------------------------------------------------------------------------
+# Setup HITL from config + CLI flags
+# ---------------------------------------------------------------------------
+
+def _apply_hitl_flags(config: AppConfig, hitl, approve_tools, checkpoint, allow_questions):
+    """Apply CLI HITL flags to config."""
+    if hitl or approve_tools or checkpoint > 0 or allow_questions:
+        config.hitl.enabled = True
+    if approve_tools:
+        config.hitl.tool_approval = True
+    if checkpoint > 0:
+        config.hitl.checkpoint_enabled = True
+        config.hitl.checkpoint_interval = checkpoint
+    if allow_questions:
+        config.hitl.agent_questions = True
+
+
+def _setup_hitl(config: AppConfig, loop):
+    """Create HITLManager + CLIApprovalHandler if HITL is enabled. Returns manager or None."""
+    if not config.hitl.enabled:
+        return None
+    from ctf_agent.hitl.manager import HITLManager
+    hitl_manager = HITLManager(config.hitl)
+    CLIApprovalHandler(hitl_manager, loop)
+    console.print("[orange1]HITL enabled[/orange1]")
+    return hitl_manager
+
+
+# ---------------------------------------------------------------------------
+# Interactive commands
+# ---------------------------------------------------------------------------
 
 @click.group()
 def cli():
@@ -108,13 +234,18 @@ def cli():
 @click.option("--model", default=None, help="Model name override")
 @click.option("--no-container", is_flag=True, help="Skip container management (use existing)")
 @click.option("--api-url", default=None, help="Container API URL (with --no-container)")
-def interactive(provider, model, no_container, api_url):
+@click.option("--hitl", is_flag=True, help="Enable Human-in-the-Loop mode")
+@click.option("--approve-tools", is_flag=True, help="Require approval for tool calls")
+@click.option("--checkpoint", type=int, default=0, help="Checkpoint every N iterations")
+@click.option("--allow-questions", is_flag=True, help="Allow agent to ask questions")
+def interactive(provider, model, no_container, api_url, hitl, approve_tools, checkpoint, allow_questions):
     """Start an interactive session with the agent."""
     config = load_config()
     if provider:
         config.llm.provider = provider
     if model:
         config.llm.model = model
+    _apply_hitl_flags(config, hitl, approve_tools, checkpoint, allow_questions)
 
     if config.llm.provider == "claude-code":
         asyncio.run(_interactive_claude_code(config, no_container, api_url))
@@ -128,6 +259,10 @@ def interactive(provider, model, no_container, api_url):
 
 async def _interactive_session(config: AppConfig, no_container: bool, api_url: str | None):
     llm = get_provider(config.llm)
+
+    loop = asyncio.get_running_loop()
+    hitl_manager = _setup_hitl(config, loop)
+
     console.print(Panel(
         "[bold]CTF Desktop Agent[/bold]\n\n"
         f"Provider: {llm.model_name()}\n"
@@ -148,6 +283,7 @@ async def _interactive_session(config: AppConfig, no_container: bool, api_url: s
         screen_height=config.container.screen_height,
         max_iterations=config.agent.max_iterations,
         max_images_in_context=config.agent.max_images_in_context,
+        hitl_manager=hitl_manager,
     )
     event_handler = _make_event_handler()
 
@@ -169,9 +305,13 @@ async def _interactive_session(config: AppConfig, no_container: bool, api_url: s
                 console.print(f"Context: {agent.context.get_summary()}")
                 if container_mgr:
                     console.print(f"Container: {'running' if container_mgr.is_running() else 'stopped'}")
+                if hitl_manager:
+                    console.print(f"HITL pending: {len(hitl_manager.get_pending_requests())}")
                 continue
             if user_input == "/clear":
                 agent.context.clear()
+                if hitl_manager:
+                    hitl_manager.cancel_all()
                 console.print("Context cleared.")
                 continue
             if user_input == "/stop":
@@ -199,6 +339,16 @@ async def _interactive_session(config: AppConfig, no_container: bool, api_url: s
 async def _interactive_claude_code(config: AppConfig, no_container: bool, api_url: str | None):
     from ctf_agent.agent.prompts import build_system_prompt
 
+    loop = asyncio.get_running_loop()
+    hitl_manager = _setup_hitl(config, loop)
+
+    # Start HITL bridge server for Claude Code mode
+    hitl_bridge = None
+    if hitl_manager:
+        from ctf_agent.hitl.bridge import HITLBridgeServer
+        hitl_bridge = HITLBridgeServer(hitl_manager, port=9999)
+        await hitl_bridge.start()
+
     container_mgr, client = await _setup_container(config, no_container, api_url)
     if client is None:
         return
@@ -216,6 +366,8 @@ async def _interactive_claude_code(config: AppConfig, no_container: bool, api_ur
         ),
         max_turns=config.agent.max_iterations,
         container_api_url=container_url,
+        hitl_config=config.hitl if config.hitl.enabled else None,
+        hitl_bridge_port=9999 if hitl_bridge else None,
     )
 
     console.print(Panel(
@@ -223,7 +375,7 @@ async def _interactive_claude_code(config: AppConfig, no_container: bool, api_ur
         f"Provider: {cc_provider.model_name()}\n"
         "Claude Code is the brain. It uses MCP tools to control the container.\n"
         "Type your task or challenge description. Type 'quit' to exit.\n"
-        "Commands: /stop, /status",
+        "Commands: /stop, /status, /clear",
         border_style="magenta",
     ))
 
@@ -243,17 +395,30 @@ async def _interactive_claude_code(config: AppConfig, no_container: bool, api_ur
                 cc_provider.stop()
                 console.print("Stop requested.")
                 continue
+            if user_input == "/clear":
+                cc_provider.clear_session()
+                if hitl_manager:
+                    hitl_manager.cancel_all()
+                console.print("Session cleared. Next message starts a fresh conversation.")
+                continue
             if user_input == "/status":
                 if container_mgr:
                     console.print(f"Container: {'running' if container_mgr.is_running() else 'stopped'}")
                     console.print(f"noVNC: {container_mgr.get_novnc_url()}")
+                console.print(f"Session: {cc_provider.session_id}")
+                if hitl_manager:
+                    console.print(f"HITL pending: {len(hitl_manager.get_pending_requests())}")
                 continue
 
             with console.status("[magenta]Claude Code is working...[/magenta]"):
                 result = await cc_provider.run_task(
-                    user_input, event_callback=event_handler
+                    user_input,
+                    event_callback=event_handler,
+                    hitl_manager=hitl_manager,
                 )
     finally:
+        if hitl_bridge:
+            await hitl_bridge.stop()
         await _teardown(client, container_mgr)
 
 

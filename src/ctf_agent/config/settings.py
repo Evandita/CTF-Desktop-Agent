@@ -49,4 +49,13 @@ def load_config() -> AppConfig:
     if os.environ.get("CTF_LOG_LEVEL"):
         config.log_level = os.environ["CTF_LOG_LEVEL"]
 
+    # HITL overrides
+    if os.environ.get("CTF_HITL_ENABLED"):
+        config.hitl.enabled = os.environ["CTF_HITL_ENABLED"].lower() == "true"
+    if os.environ.get("CTF_HITL_TOOL_APPROVAL"):
+        config.hitl.tool_approval = os.environ["CTF_HITL_TOOL_APPROVAL"].lower() == "true"
+    if os.environ.get("CTF_HITL_CHECKPOINT_INTERVAL"):
+        config.hitl.checkpoint_enabled = True
+        config.hitl.checkpoint_interval = int(os.environ["CTF_HITL_CHECKPOINT_INTERVAL"])
+
     return config

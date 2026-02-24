@@ -36,6 +36,8 @@ def get_claude_code_provider(
     system_prompt: str | None = None,
     max_turns: int | None = None,
     container_api_url: str | None = None,
+    hitl_config=None,
+    hitl_bridge_port: int | None = None,
 ) -> ClaudeCodeProvider:
     """Instantiate the Claude Code provider (subprocess-based)."""
     return ClaudeCodeProvider(
@@ -43,4 +45,6 @@ def get_claude_code_provider(
         max_turns=max_turns,
         system_prompt=system_prompt,
         container_api_url=container_api_url,
+        hitl_config=hitl_config,
+        hitl_bridge_port=hitl_bridge_port,
     )

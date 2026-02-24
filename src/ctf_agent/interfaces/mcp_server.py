@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 # Global state
 _client: ContainerClient | None = None
 _container_mgr: ContainerManager | None = None
+_hitl_bridge_client = None  # HITLBridgeClient when HITL is enabled
+_hitl_config: dict | None = None  # Parsed HITL config from env
 
 
 def _get_client() -> ContainerClient:
@@ -47,12 +49,28 @@ def _get_client() -> ContainerClient:
     return _client
 
 
+def _needs_approval(tool_name: str) -> bool:
+    """Check if a tool needs HITL approval based on the config passed via env."""
+    if not _hitl_config or not _hitl_bridge_client:
+        return False
+    if not _hitl_config.get("enabled") or not _hitl_config.get("tool_approval"):
+        return False
+    if tool_name in _hitl_config.get("tools_auto_approved", []):
+        return False
+    required = _hitl_config.get("tools_requiring_approval", [])
+    if "all" in required:
+        return True
+    if "none" in required:
+        return False
+    return tool_name in required
+
+
 server = Server("ctf-desktop-agent")
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
-    return [
+    tools = [
         Tool(
             name="ctf_screenshot",
             description=(
@@ -214,10 +232,81 @@ async def list_tools() -> list[Tool]:
         ),
     ]
 
+    # Add ask_human tool when HITL agent questions are enabled
+    if _hitl_config and _hitl_config.get("enabled") and _hitl_config.get("agent_questions"):
+        tools.append(Tool(
+            name="ctf_ask_human",
+            description=(
+                "Ask the human operator a question and wait for their response. "
+                "Use when you need clarification about the task, are uncertain "
+                "about which approach to take, or want confirmation before a "
+                "potentially destructive action."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "Your question for the human operator",
+                    }
+                },
+                "required": ["question"],
+            },
+        ))
+
+    return tools
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> CallToolResult:
     try:
+        # --- HITL: Agent question tool ---
+        if name == "ctf_ask_human":
+            if _hitl_bridge_client:
+                result = await _hitl_bridge_client.request_approval(
+                    approval_type="agent_question",
+                    tool_name=name,
+                    tool_input=arguments,
+                )
+                return CallToolResult(
+                    content=[TextContent(
+                        type="text",
+                        text=f"Human response: {result.get('message', 'No response')}",
+                    )]
+                )
+            else:
+                return CallToolResult(
+                    content=[TextContent(
+                        type="text",
+                        text="HITL not enabled. Cannot ask human questions.",
+                    )],
+                    isError=True,
+                )
+
+        # --- HITL: Tool approval gate ---
+        if _needs_approval(name):
+            try:
+                result = await _hitl_bridge_client.request_approval(
+                    approval_type="tool_approval",
+                    tool_name=name,
+                    tool_input=arguments,
+                )
+                if result.get("decision") == "reject":
+                    reason = result.get("message", "No reason given")
+                    return CallToolResult(
+                        content=[TextContent(
+                            type="text",
+                            text=(
+                                f"TOOL EXECUTION BLOCKED: Human operator rejected "
+                                f"this tool call. Reason: {reason}. "
+                                f"Try a different approach."
+                            ),
+                        )],
+                        isError=True,
+                    )
+            except Exception as e:
+                logger.warning(f"HITL bridge error: {e}. Proceeding without approval.")
+
         client = _get_client()
 
         if name == "ctf_screenshot":
@@ -387,7 +476,7 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
 
 
 async def main():
-    global _client, _container_mgr
+    global _client, _container_mgr, _hitl_bridge_client, _hitl_config
 
     config = load_config()
 
@@ -413,6 +502,15 @@ async def main():
     if not ready:
         logger.error("Container API did not become ready")
         raise RuntimeError("Container API not ready")
+
+    # Initialize HITL bridge client if configured via env vars
+    hitl_config_json = os.environ.get("CTF_HITL_CONFIG")
+    bridge_port = os.environ.get("CTF_HITL_BRIDGE_PORT")
+    if hitl_config_json and bridge_port:
+        _hitl_config = json.loads(hitl_config_json)
+        from ctf_agent.hitl.bridge import HITLBridgeClient
+        _hitl_bridge_client = HITLBridgeClient(port=int(bridge_port))
+        logger.info(f"HITL bridge client initialized (port={bridge_port})")
 
     logger.info("Container ready, starting MCP server...")
 

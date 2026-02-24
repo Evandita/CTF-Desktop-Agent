@@ -3,6 +3,8 @@ const messageInput = document.getElementById('message-input');
 const containerStatus = document.getElementById('container-status');
 const msgCount = document.getElementById('msg-count');
 const imgCount = document.getElementById('img-count');
+const hitlStatus = document.getElementById('hitl-status');
+const hitlPending = document.getElementById('hitl-pending');
 
 let ws = null;
 
@@ -53,6 +55,122 @@ function handleAgentEvent(event) {
             addMessage('system', 'Agent completed task.');
             updateStatus();
             break;
+
+        // --- HITL events ---
+        case 'approval_request':
+            showApprovalDialog(event);
+            break;
+        case 'checkpoint':
+            showApprovalDialog({
+                ...event,
+                approval_type: 'checkpoint',
+                data: event.data || event,
+            });
+            break;
+        case 'agent_question':
+            showApprovalDialog({
+                ...event,
+                approval_type: 'agent_question',
+                data: event.data || event,
+            });
+            break;
+        case 'tool_approval_requested':
+            addMessage('system', `Awaiting approval for: ${event.tool}`);
+            break;
+        case 'tool_rejected':
+            addMessage('tool-error', `Tool rejected: ${event.tool} — ${event.reason || 'no reason'}`);
+            break;
+    }
+}
+
+function showApprovalDialog(event) {
+    const requestId = event.request_id;
+    const approvalType = event.approval_type;
+    const data = event.data || {};
+
+    const container = document.createElement('div');
+    container.className = 'message approval-request';
+    container.id = `approval-${requestId}`;
+
+    let content = '';
+    if (approvalType === 'tool_approval') {
+        const toolName = data.tool_name || '';
+        const toolInput = JSON.stringify(data.tool_input || {}, null, 2);
+        content = `
+            <div class="approval-header">Tool Approval Required</div>
+            <div class="approval-tool">${toolName}</div>
+            <pre class="approval-args">${toolInput}</pre>
+        `;
+    } else if (approvalType === 'checkpoint') {
+        content = `
+            <div class="approval-header">Checkpoint</div>
+            <div>${data.message || 'Checkpoint reached. Continue?'}</div>
+        `;
+    } else if (approvalType === 'agent_question') {
+        const question = data.question || data.tool_input?.question || '';
+        content = `
+            <div class="approval-header">Agent Question</div>
+            <div class="approval-question">${question}</div>
+        `;
+    }
+
+    content += `
+        <div class="approval-actions">
+            <input type="text" class="approval-message"
+                   placeholder="${approvalType === 'agent_question' ? 'Your answer...' : 'Optional message...'}"
+                   onkeydown="if(event.key==='Enter') submitApproval('${requestId}', 'approve')" />
+            <button class="btn-approve" onclick="submitApproval('${requestId}', 'approve')">
+                ${approvalType === 'agent_question' ? 'Send' : 'Approve'}
+            </button>
+            <button class="btn-reject" onclick="submitApproval('${requestId}', 'reject')">
+                Reject
+            </button>
+        </div>
+    `;
+
+    container.innerHTML = content;
+    chatMessages.appendChild(container);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Focus the input
+    const input = container.querySelector('.approval-message');
+    if (input) input.focus();
+
+    updateHITLPending(1);
+}
+
+function submitApproval(requestId, decision) {
+    const container = document.getElementById(`approval-${requestId}`);
+    const msgInput = container?.querySelector('.approval-message');
+    const message = msgInput?.value || '';
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'approval_response',
+            request_id: requestId,
+            decision: decision,
+            message: message,
+        }));
+    }
+
+    // Update UI to show decision was made
+    if (container) {
+        const actions = container.querySelector('.approval-actions');
+        if (actions) {
+            const cls = decision === 'approve' ? 'approved' : 'rejected';
+            const label = decision === 'approve' ? 'APPROVED' : 'REJECTED';
+            const extra = message ? ` — ${message}` : '';
+            actions.innerHTML = `<span class="${cls}">${label}${extra}</span>`;
+        }
+    }
+
+    updateHITLPending(-1);
+}
+
+function updateHITLPending(delta) {
+    if (hitlPending) {
+        const current = parseInt(hitlPending.textContent) || 0;
+        hitlPending.textContent = Math.max(0, current + delta);
     }
 }
 
@@ -111,6 +229,20 @@ async function updateStatus() {
         if (data.container_running) {
             containerStatus.textContent = 'Running';
             containerStatus.className = 'status-badge connected';
+        }
+
+        // Update HITL status
+        if (hitlStatus) {
+            if (data.hitl?.enabled) {
+                hitlStatus.textContent = 'Enabled';
+                hitlStatus.className = 'hitl-enabled';
+            } else {
+                hitlStatus.textContent = 'Disabled';
+                hitlStatus.className = '';
+            }
+        }
+        if (hitlPending && data.hitl?.pending_count !== undefined) {
+            hitlPending.textContent = data.hitl.pending_count;
         }
     } catch (err) {
         // Status update failed, ignore

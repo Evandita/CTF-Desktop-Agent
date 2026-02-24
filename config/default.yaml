@@ -25,4 +25,14 @@ web_ui:
   host: "0.0.0.0"
   port: 8080
 
+hitl:
+  enabled: false
+  tool_approval: false
+  tools_requiring_approval: ["all"]
+  tools_auto_approved: ["ctf_screenshot", "ctf_container_status"]
+  checkpoint_enabled: false
+  checkpoint_interval: 5
+  agent_questions: false
+  approval_timeout: 0
+
 log_level: "INFO"
