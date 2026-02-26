@@ -10,6 +10,7 @@ class ShellCommand(BaseModel):
     command: str
     timeout: int = 30
     working_dir: Optional[str] = None
+    visible: bool = True
 
 
 class ShellResult(BaseModel):
@@ -27,6 +28,7 @@ async def execute_command(cmd: ShellCommand):
         command=cmd.command,
         timeout=cmd.timeout,
         working_dir=cmd.working_dir,
+        visible=cmd.visible,
     )
     return ShellResult(
         stdout=result.stdout,
@@ -44,6 +46,7 @@ async def execute_command_async(cmd: ShellCommand):
         command=cmd.command,
         timeout=cmd.timeout,
         working_dir=cmd.working_dir,
+        visible=cmd.visible,
     )
     return {"execution_id": exec_id, "status": "started"}
 

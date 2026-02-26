@@ -15,7 +15,7 @@ RUN rm -rf /var/lib/apt/lists/* \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     xfce4 xfce4-terminal dbus-x11 \
-    xvfb x11vnc novnc websockify \
+    tigervnc-standalone-server tigervnc-common novnc websockify \
     xdotool scrot imagemagick xclip xsel \
     supervisor curl wget git python3 python3-pip python3-venv \
     net-tools procps htop tmux vim nano \
@@ -47,6 +47,11 @@ COPY container_api/ /opt/container_api/
 RUN python3 -m venv /opt/container_api/venv \
     && /opt/container_api/venv/bin/pip install --no-cache-dir \
        -r /opt/container_api/requirements.txt
+
+# Visible terminal helper script
+COPY scripts/ctf-exec.sh /usr/local/bin/ctf-exec
+RUN chmod +x /usr/local/bin/ctf-exec
+RUN mkdir -p /tmp/ctf-exec && chmod 1777 /tmp/ctf-exec
 
 # Supervisor + Entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
