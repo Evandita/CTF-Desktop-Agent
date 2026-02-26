@@ -16,8 +16,9 @@ _async_results: dict[str, "CommandResult"] = {}
 # Directory for temp files used by visible execution
 EXEC_TEMP_DIR = "/tmp/ctf-exec"
 
-# tmux session name
+# tmux session name and shared socket (root API + ctfuser desktop share this)
 TMUX_SESSION = "ctf"
+TMUX_SOCKET = "/tmp/ctf-tmux"
 
 # Ensure temp directory exists
 os.makedirs(EXEC_TEMP_DIR, exist_ok=True)
@@ -36,7 +37,7 @@ def _tmux_session_exists() -> bool:
     """Check if the ctf tmux session is alive."""
     try:
         result = subprocess.run(
-            ["tmux", "has-session", "-t", TMUX_SESSION],
+            ["tmux", "-S", TMUX_SOCKET, "has-session", "-t", TMUX_SESSION],
             capture_output=True,
             timeout=5,
         )
@@ -51,7 +52,7 @@ def _ensure_tmux_session() -> bool:
         return True
     try:
         subprocess.run(
-            ["tmux", "new-session", "-d", "-s", TMUX_SESSION, "-x", "200", "-y", "50"],
+            ["tmux", "-S", TMUX_SOCKET, "new-session", "-d", "-s", TMUX_SESSION, "-x", "200", "-y", "50"],
             capture_output=True,
             timeout=10,
         )
@@ -106,7 +107,7 @@ def run_command_visible(
 
         # Send the command to tmux
         subprocess.run(
-            ["tmux", "send-keys", "-t", TMUX_SESSION, exec_cmd, "Enter"],
+            ["tmux", "-S", TMUX_SOCKET, "send-keys", "-t", TMUX_SESSION, exec_cmd, "Enter"],
             capture_output=True,
             timeout=5,
         )
@@ -126,20 +127,20 @@ def run_command_visible(
         if not os.path.exists(rc_file):
             # Send Ctrl+C to kill the running command
             subprocess.run(
-                ["tmux", "send-keys", "-t", TMUX_SESSION, "C-c", ""],
+                ["tmux", "-S", TMUX_SOCKET, "send-keys", "-t", TMUX_SESSION, "C-c", ""],
                 capture_output=True,
                 timeout=5,
             )
             time.sleep(0.5)
             subprocess.run(
-                ["tmux", "send-keys", "-t", TMUX_SESSION, "C-c", ""],
+                ["tmux", "-S", TMUX_SOCKET, "send-keys", "-t", TMUX_SESSION, "C-c", ""],
                 capture_output=True,
                 timeout=5,
             )
             time.sleep(0.2)
             # Send Enter to reset prompt
             subprocess.run(
-                ["tmux", "send-keys", "-t", TMUX_SESSION, "", "Enter"],
+                ["tmux", "-S", TMUX_SOCKET, "send-keys", "-t", TMUX_SESSION, "", "Enter"],
                 capture_output=True,
                 timeout=5,
             )
