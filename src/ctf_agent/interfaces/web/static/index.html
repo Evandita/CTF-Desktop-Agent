@@ -4,22 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CTF Desktop Agent</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
     <div class="layout">
         <!-- Left: Live Desktop View -->
         <div class="desktop-panel">
             <div class="panel-header">
-                <h2>Live Desktop</h2>
+                <h2 id="desktop-title">Live Desktop</h2>
                 <span id="container-status" class="status-badge">Connecting...</span>
             </div>
             <iframe id="vnc-frame" src="" frameborder="0" allow="fullscreen" allowfullscreen></iframe>
+            <img id="playback-screenshot" class="playback-screenshot" style="display:none" alt="Recording screenshot" />
         </div>
 
         <!-- Right: Chat + Status -->
         <div class="agent-panel">
-            <div class="chat-container">
+            <!-- Normal chat view -->
+            <div id="chat-view" class="chat-container">
                 <div class="panel-header">
                     <h2>Agent Chat</h2>
                     <div class="header-actions">
@@ -39,9 +41,51 @@
                 </div>
             </div>
 
+            <!-- Recording playback view (hidden by default, replaces chat) -->
+            <div id="recordings-view" class="recordings-panel" style="display:none">
+                <div class="panel-header">
+                    <h2>Recordings</h2>
+                    <div class="header-actions">
+                        <button onclick="closeRecordings()">Back to Chat</button>
+                    </div>
+                </div>
+
+                <div class="recordings-body">
+                    <!-- Session list -->
+                    <div class="recordings-sessions" id="sessions-area">
+                        <div class="recordings-sessions-list" id="session-list"></div>
+                    </div>
+
+                    <!-- Event replay (shown after selecting a session) -->
+                    <div class="recordings-events" id="events-area" style="display:none">
+                        <div class="recordings-events-header">
+                            <button class="recordings-back-btn" onclick="backToSessions()">&larr; Sessions</button>
+                            <span id="recording-task-name" class="recording-task-name"></span>
+                        </div>
+                        <div class="recordings-events-list" id="events-list"></div>
+                        <div class="recordings-controls">
+                            <button onclick="seekRelative(-1)" title="Previous">&lt;</button>
+                            <button id="playback-toggle" onclick="togglePlayback()" title="Play/Pause">Play</button>
+                            <button onclick="seekRelative(1)" title="Next">&gt;</button>
+                            <input type="range" id="playback-scrubber" min="0" max="0" value="0"
+                                   oninput="seekToFrame(parseInt(this.value))" />
+                            <span id="playback-frame-info">0 / 0</span>
+                            <select id="playback-speed" onchange="setPlaybackSpeed(this.value)">
+                                <option value="500">1x</option>
+                                <option value="250">2x</option>
+                                <option value="100">4x</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="status-panel">
                 <div class="panel-header">
                     <h2>Status</h2>
+                    <div class="header-actions">
+                        <button onclick="openRecordings()" title="View recordings">Recordings</button>
+                    </div>
                 </div>
                 <div id="status-info" class="status-info">
                     <div>Messages: <span id="msg-count">0</span></div>
@@ -52,6 +96,7 @@
             </div>
         </div>
     </div>
-    <script src="/static/app.js"></script>
+
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>

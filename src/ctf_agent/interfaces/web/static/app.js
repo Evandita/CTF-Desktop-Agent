@@ -249,6 +249,260 @@ async function updateStatus() {
     }
 }
 
+// ============================
+// Recording Playback (inline panel)
+// ============================
+
+let _playbackData = null;
+let _playbackIndex = -1;
+let _playbackTimer = null;
+let _playbackSpeed = 500;
+let _activeSessionId = null;
+
+function openRecordings() {
+    stopPlayback();
+    document.getElementById('chat-view').style.display = 'none';
+    document.getElementById('recordings-view').style.display = 'flex';
+    loadRecordingList();
+}
+
+function closeRecordings() {
+    stopPlayback();
+    hidePlaybackScreenshot();
+    document.getElementById('recordings-view').style.display = 'none';
+    document.getElementById('chat-view').style.display = 'flex';
+}
+
+function backToSessions() {
+    stopPlayback();
+    hidePlaybackScreenshot();
+    _activeSessionId = null;
+    _playbackData = null;
+    document.getElementById('events-area').style.display = 'none';
+    document.getElementById('sessions-area').style.display = 'flex';
+}
+
+function showPlaybackScreenshot(sessionId, filename) {
+    const img = document.getElementById('playback-screenshot');
+    const iframe = document.getElementById('vnc-frame');
+    img.src = `/api/recordings/${sessionId}/screenshot/${filename}`;
+    img.style.display = 'block';
+    iframe.style.visibility = 'hidden';
+    document.getElementById('desktop-title').textContent = 'Recording Playback';
+}
+
+function hidePlaybackScreenshot() {
+    const img = document.getElementById('playback-screenshot');
+    const iframe = document.getElementById('vnc-frame');
+    img.style.display = 'none';
+    iframe.style.visibility = 'visible';
+    document.getElementById('desktop-title').textContent = 'Live Desktop';
+}
+
+async function loadRecordingList() {
+    const listEl = document.getElementById('session-list');
+    try {
+        const resp = await fetch('/api/recordings');
+        const sessions = await resp.json();
+
+        if (!sessions.length) {
+            listEl.innerHTML = '<div class="sessions-empty">No recordings yet. Start a task to record.</div>';
+            return;
+        }
+
+        listEl.innerHTML = sessions.map(s => {
+            const date = new Date(s.started_at * 1000).toLocaleString();
+            const dur = s.duration_seconds ? `${Math.round(s.duration_seconds)}s` : 'running';
+            const evts = s.total_events || '?';
+            return `
+                <div class="session-card" onclick="loadRecording('${s.session_id}')">
+                    <div class="session-card-task">${escapeHtml(s.task || 'Untitled')}</div>
+                    <div class="session-card-meta">
+                        <span>${date}</span>
+                        <span>${dur} / ${evts} events</span>
+                        <button class="session-card-delete" onclick="event.stopPropagation(); deleteRecording('${s.session_id}')" title="Delete">&times;</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        listEl.innerHTML = '<div class="sessions-empty">Failed to load recordings.</div>';
+    }
+}
+
+function formatEventItem(ev, i, startTime) {
+    const elapsed = ((ev.timestamp || 0) - startTime).toFixed(1);
+    let detail = '';
+    const d = ev.data || {};
+
+    switch (ev.event_type) {
+        case 'tool_call':
+            detail = d.tool || '';
+            if (d.input) {
+                const inp = typeof d.input === 'string' ? d.input : JSON.stringify(d.input);
+                detail += '\n' + inp.substring(0, 200);
+            }
+            break;
+        case 'tool_result':
+            detail = (d.output || '').substring(0, 300);
+            if (d.is_error) detail = '[ERROR] ' + detail;
+            break;
+        case 'text':
+            detail = (d.text || '').substring(0, 300);
+            break;
+        case 'thinking':
+            detail = d.iteration ? `iteration ${d.iteration}` : '';
+            break;
+        case 'error':
+            detail = d.text || '';
+            break;
+        case 'done':
+            detail = (d.text || 'Task completed').substring(0, 200);
+            break;
+    }
+
+    return `
+        <div class="event-item" id="event-${i}" onclick="seekToFrame(${i})">
+            <span class="event-time">+${elapsed}s</span>
+            <span class="event-type ${ev.event_type}">${ev.event_type}</span>
+            ${detail ? `<div class="event-detail">${escapeHtml(detail)}</div>` : ''}
+        </div>
+    `;
+}
+
+async function loadRecording(sessionId) {
+    stopPlayback();
+    _activeSessionId = sessionId;
+    _playbackIndex = -1;
+
+    try {
+        const resp = await fetch(`/api/recordings/${sessionId}`);
+        _playbackData = await resp.json();
+
+        if (_playbackData.error) {
+            return;
+        }
+
+        // Switch from session list to events view
+        document.getElementById('sessions-area').style.display = 'none';
+        document.getElementById('events-area').style.display = 'flex';
+
+        // Show task name
+        document.getElementById('recording-task-name').textContent =
+            _playbackData.task || 'Untitled';
+
+        // Render all events (hidden by default via CSS display:none)
+        const eventsEl = document.getElementById('events-list');
+        const startTime = _playbackData.started_at || 0;
+
+        eventsEl.innerHTML = _playbackData.events
+            .map((ev, i) => formatEventItem(ev, i, startTime))
+            .join('');
+
+        // Configure scrubber
+        const scrubber = document.getElementById('playback-scrubber');
+        scrubber.max = Math.max(0, _playbackData.events.length - 1);
+        scrubber.value = 0;
+        document.getElementById('playback-frame-info').textContent =
+            `0 / ${_playbackData.events.length}`;
+
+        // Show first event
+        seekToFrame(0);
+    } catch (err) {
+        // ignore
+    }
+}
+
+function seekToFrame(index) {
+    if (!_playbackData || !_playbackData.events.length) return;
+
+    _playbackIndex = Math.max(0, Math.min(index, _playbackData.events.length - 1));
+
+    // Update scrubber
+    document.getElementById('playback-scrubber').value = _playbackIndex;
+    document.getElementById('playback-frame-info').textContent =
+        `${_playbackIndex + 1} / ${_playbackData.events.length}`;
+
+    // Show events up to current index (display:block), hide the rest (display:none)
+    document.querySelectorAll('.event-item').forEach((el, i) => {
+        el.classList.toggle('visible', i <= _playbackIndex);
+        el.classList.toggle('active', i === _playbackIndex);
+    });
+
+    // Show screenshot: find the most recent event with a screenshot (at or before current)
+    let screenshotFile = null;
+    for (let i = _playbackIndex; i >= 0; i--) {
+        if (_playbackData.events[i].screenshot) {
+            screenshotFile = _playbackData.events[i].screenshot;
+            break;
+        }
+    }
+    if (screenshotFile && _activeSessionId) {
+        showPlaybackScreenshot(_activeSessionId, screenshotFile);
+    }
+
+    // Scroll to current event
+    const activeEl = document.getElementById(`event-${_playbackIndex}`);
+    if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function seekRelative(delta) {
+    seekToFrame(_playbackIndex + delta);
+}
+
+function togglePlayback() {
+    const btn = document.getElementById('playback-toggle');
+    if (_playbackTimer) {
+        stopPlayback();
+    } else {
+        btn.textContent = 'Pause';
+        _playbackTimer = setInterval(() => {
+            if (_playbackIndex >= (_playbackData?.events?.length || 0) - 1) {
+                stopPlayback();
+                return;
+            }
+            seekToFrame(_playbackIndex + 1);
+        }, _playbackSpeed);
+    }
+}
+
+function stopPlayback() {
+    if (_playbackTimer) {
+        clearInterval(_playbackTimer);
+        _playbackTimer = null;
+    }
+    const btn = document.getElementById('playback-toggle');
+    if (btn) btn.textContent = 'Play';
+}
+
+function setPlaybackSpeed(ms) {
+    _playbackSpeed = parseInt(ms);
+    if (_playbackTimer) {
+        stopPlayback();
+        togglePlayback();
+    }
+}
+
+async function deleteRecording(sessionId) {
+    try {
+        await fetch(`/api/recordings/${sessionId}`, { method: 'DELETE' });
+        if (sessionId === _activeSessionId) {
+            backToSessions();
+        }
+        await loadRecordingList();
+    } catch (err) {
+        // ignore
+    }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 // Initialize
 connectWebSocket();
 updateStatus();

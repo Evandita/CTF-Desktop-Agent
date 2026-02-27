@@ -32,6 +32,9 @@ docker/container_api/venv/
 # Logs
 *.log
 
+# Recordings
+recordings/
+
 # Test
 .pytest_cache/
 htmlcov/

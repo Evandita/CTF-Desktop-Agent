@@ -5,8 +5,17 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
+
+from ctf_agent.recording.manager import (
+    RecordingSession,
+    SCREENSHOT_EVENTS,
+    list_recordings,
+    get_recording,
+    get_screenshot_path,
+    delete_recording,
+)
 
 from ctf_agent.config.settings import load_config
 from ctf_agent.llm.factory import get_provider, get_claude_code_provider
@@ -37,6 +46,7 @@ _config = None
 _provider_mode: str = "claude"  # "claude", "ollama", or "claude-code"
 _hitl_manager = None  # HITLManager when HITL is enabled
 _hitl_bridge_server = None  # HITLBridgeServer for Claude Code mode
+_recording: RecordingSession | None = None
 
 
 class ChatRequest(BaseModel):
@@ -111,11 +121,23 @@ async def shutdown():
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return (STATIC_DIR / "index.html").read_text()
+    html = (STATIC_DIR / "index.html").read_text()
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    global _recording
+
+    # Start recording for this task
+    try:
+        if _recording and _recording.active:
+            _recording.stop()
+        _recording = RecordingSession(client=_client)
+        _recording.start(task=req.message, provider=_provider_mode)
+    except Exception:
+        logger.debug("Failed to start recording", exc_info=True)
+
     if _provider_mode == "claude-code":
         if not _cc_provider:
             return {"error": "Claude Code provider not initialized"}
@@ -190,6 +212,37 @@ async def hitl_respond(req: HITLResponseRequest):
     return {"status": "ok" if ok else "not_found"}
 
 
+@app.get("/api/recordings")
+async def recordings_list():
+    """List all recorded sessions."""
+    return list_recordings()
+
+
+@app.get("/api/recordings/{session_id}")
+async def recording_detail(session_id: str):
+    """Get a recording's metadata + event timeline."""
+    rec = get_recording(session_id)
+    if rec is None:
+        return {"error": "Recording not found"}
+    return rec
+
+
+@app.get("/api/recordings/{session_id}/screenshot/{filename}")
+async def recording_screenshot(session_id: str, filename: str):
+    """Serve a screenshot PNG from a recording session."""
+    path = get_screenshot_path(session_id, filename)
+    if path is None:
+        return HTMLResponse("Not found", status_code=404)
+    return FileResponse(path, media_type="image/png")
+
+
+@app.delete("/api/recordings/{session_id}")
+async def recording_delete(session_id: str):
+    """Delete a recording session."""
+    ok = delete_recording(session_id)
+    return {"status": "deleted" if ok else "not_found"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
@@ -234,6 +287,24 @@ def _on_hitl_request(request):
 
 
 async def _broadcast(event_type: str, data: dict):
+    # Record event if recording is active
+    if _recording and _recording.active:
+        try:
+            _recording.record_event(event_type, data)
+            # Capture screenshot on significant events
+            if event_type in SCREENSHOT_EVENTS:
+                event_idx = _recording._event_index - 1  # just recorded
+                await _recording.capture_screenshot(event_idx)
+        except Exception:
+            logger.debug("Recording event capture failed", exc_info=True)
+
+        # Auto-stop recording when task completes
+        if event_type in ("done", "error"):
+            try:
+                _recording.stop()
+            except Exception:
+                logger.debug("Recording stop failed", exc_info=True)
+
     msg = {"type": event_type, **data}
     for ws in list(_websocket_clients):
         try:
