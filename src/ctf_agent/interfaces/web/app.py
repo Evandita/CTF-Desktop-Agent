@@ -339,7 +339,8 @@ async def _run_claude_code(message: str):
         )
     except Exception:
         logger.exception("Claude Code task failed")
-        await _broadcast("error", {"text": "Claude Code task failed. Check server logs."})
+        _cc_provider.clear_session()
+        await _broadcast("error", {"text": "Claude Code task failed. Session reset."})
 
 
 def _register_tools(client: ContainerClient) -> ToolRegistry:

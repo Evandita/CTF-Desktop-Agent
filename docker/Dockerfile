@@ -53,6 +53,9 @@ COPY scripts/ctf-exec.sh /usr/local/bin/ctf-exec
 RUN chmod +x /usr/local/bin/ctf-exec
 RUN mkdir -p /tmp/ctf-exec && chmod 1777 /tmp/ctf-exec
 
+# Tmux config (mouse scroll + scrollback buffer)
+COPY tmux.conf /etc/tmux.conf
+
 # Supervisor + Entrypoint
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY entrypoint.sh /entrypoint.sh

@@ -410,12 +410,16 @@ async def _interactive_claude_code(config: AppConfig, no_container: bool, api_ur
                     console.print(f"HITL pending: {len(hitl_manager.get_pending_requests())}")
                 continue
 
-            with console.status("[magenta]Claude Code is working...[/magenta]"):
-                result = await cc_provider.run_task(
-                    user_input,
-                    event_callback=event_handler,
-                    hitl_manager=hitl_manager,
-                )
+            try:
+                with console.status("[magenta]Claude Code is working...[/magenta]"):
+                    await cc_provider.run_task(
+                        user_input,
+                        event_callback=event_handler,
+                        hitl_manager=hitl_manager,
+                    )
+            except Exception:
+                console.print("[red]Claude Code task failed. Session reset.[/red]")
+                cc_provider.clear_session()
     finally:
         if hitl_bridge:
             await hitl_bridge.stop()

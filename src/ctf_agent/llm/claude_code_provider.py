@@ -13,18 +13,22 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ctf_agent.config.models import HITLConfig
     from ctf_agent.hitl.manager import HITLManager
 
 logger = logging.getLogger(__name__)
+
+# Pattern matching Anthropic API errors about duplicate tool_use IDs
+_DUPLICATE_ID_PATTERN = re.compile(r"tool_use.*ids must be unique", re.IGNORECASE)
 
 
 @dataclass
@@ -71,11 +75,17 @@ class ClaudeCodeProvider:
     def model_name(self) -> str:
         return f"claude-code{f' ({self._model})' if self._model else ''}"
 
+    @staticmethod
+    def _is_duplicate_id_error(text: str) -> bool:
+        """Check if text contains the Anthropic API duplicate tool_use ID error."""
+        return bool(_DUPLICATE_ID_PATTERN.search(text))
+
     async def run_task(
         self,
         task: str,
         event_callback: Optional[callable] = None,
         hitl_manager: Optional["HITLManager"] = None,
+        _retry: bool = False,
     ) -> str:
         """
         Run a task using Claude Code. Streams output via event_callback.
@@ -175,6 +185,7 @@ class ClaudeCodeProvider:
         self._process.stdin.close()
 
         final_text = ""
+        duplicate_id_detected = False
 
         # Checkpoint config
         checkpoint_enabled = (
@@ -199,6 +210,8 @@ class ClaudeCodeProvider:
                 event = json.loads(line_str)
             except json.JSONDecodeError:
                 # Plain text output (non-JSON)
+                if self._is_duplicate_id_error(line_str):
+                    duplicate_id_detected = True
                 final_text += line_str + "\n"
                 if event_callback:
                     event_callback(ClaudeCodeEvent("text", {"text": line_str}))
@@ -266,8 +279,10 @@ class ClaudeCodeProvider:
                 # Final result
                 result_text = event.get("result", "")
                 if result_text:
+                    if self._is_duplicate_id_error(result_text):
+                        duplicate_id_detected = True
                     final_text = result_text
-                if event_callback:
+                if not duplicate_id_detected and event_callback:
                     event_callback(ClaudeCodeEvent("done", {"text": final_text}))
 
         # Wait for process to finish
@@ -278,9 +293,28 @@ class ClaudeCodeProvider:
         if stderr:
             stderr_text = stderr.decode("utf-8", errors="replace").strip()
             if stderr_text:
+                if self._is_duplicate_id_error(stderr_text):
+                    duplicate_id_detected = True
                 logger.warning(f"Claude Code stderr: {stderr_text}")
 
+        # Auto-retry with a fresh session on duplicate tool_use ID error
+        if duplicate_id_detected and not _retry:
+            logger.warning(
+                "Duplicate tool_use ID error detected — retrying with fresh session"
+            )
+            self._process = None
+            self.clear_session()
+            return await self.run_task(
+                task,
+                event_callback=event_callback,
+                hitl_manager=hitl_manager,
+                _retry=True,
+            )
+
         if self._process.returncode != 0:
+            # Reset session on failure so the next call starts fresh
+            # instead of trying to resume a broken session.
+            self._has_session = False
             if event_callback:
                 event_callback(ClaudeCodeEvent("error", {
                     "text": f"Claude Code exited with code {self._process.returncode}"
