@@ -242,7 +242,7 @@ class AgentCore:
             # If no tools were used, the agent is done
             if response.stop_reason != "tool_use" or not tool_results:
                 if event_callback:
-                    event_callback(AgentEvent("done", {"text": final_text}))
+                    event_callback(AgentEvent("done", {}))
                 break
 
             # Add tool results and continue the loop

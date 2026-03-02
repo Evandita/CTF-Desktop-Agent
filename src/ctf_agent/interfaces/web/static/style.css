@@ -556,6 +556,12 @@ body {
     white-space: pre-wrap;
     word-break: break-all;
     max-height: 60px;
+    overflow: hidden;
+}
+
+/* Active event expands to show full content */
+.event-item.active .event-detail {
+    max-height: none;
     overflow-y: auto;
 }
 

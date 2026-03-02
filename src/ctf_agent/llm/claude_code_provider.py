@@ -283,7 +283,7 @@ class ClaudeCodeProvider:
                         duplicate_id_detected = True
                     final_text = result_text
                 if not duplicate_id_detected and event_callback:
-                    event_callback(ClaudeCodeEvent("done", {"text": final_text}))
+                    event_callback(ClaudeCodeEvent("done", {}))
 
         # Wait for process to finish
         await self._process.wait()

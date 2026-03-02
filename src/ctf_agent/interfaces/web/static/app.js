@@ -340,15 +340,15 @@ function formatEventItem(ev, i, startTime) {
             detail = d.tool || '';
             if (d.input) {
                 const inp = typeof d.input === 'string' ? d.input : JSON.stringify(d.input);
-                detail += '\n' + inp.substring(0, 200);
+                detail += '\n' + inp;
             }
             break;
         case 'tool_result':
-            detail = (d.output || '').substring(0, 300);
+            detail = d.output || '';
             if (d.is_error) detail = '[ERROR] ' + detail;
             break;
         case 'text':
-            detail = (d.text || '').substring(0, 300);
+            detail = d.text || '';
             break;
         case 'thinking':
             detail = d.iteration ? `iteration ${d.iteration}` : '';
@@ -357,7 +357,7 @@ function formatEventItem(ev, i, startTime) {
             detail = d.text || '';
             break;
         case 'done':
-            detail = (d.text || 'Task completed').substring(0, 200);
+            detail = d.text || 'Task completed';
             break;
     }
 
