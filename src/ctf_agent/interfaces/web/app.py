@@ -167,6 +167,8 @@ async def status():
         "context": ctx,
         "novnc_url": _container_mgr.get_novnc_url() if _container_mgr else None,
         "hitl": hitl_info,
+        "screen_width": _config.container.screen_width,
+        "screen_height": _config.container.screen_height,
     }
 
 

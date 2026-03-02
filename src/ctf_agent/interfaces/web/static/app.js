@@ -7,6 +7,73 @@ const hitlStatus = document.getElementById('hitl-status');
 const hitlPending = document.getElementById('hitl-pending');
 
 let ws = null;
+let vncAspectRatio = null;
+
+// ============================
+// VNC iframe aspect ratio fitting
+// ============================
+
+function resizeVncFrame() {
+    const frame = document.getElementById('vnc-frame');
+    const container = frame.parentElement;
+    if (!container || !vncAspectRatio) return;
+
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    if (cw === 0 || ch === 0) return;
+
+    const containerRatio = cw / ch;
+
+    let w, h;
+    if (containerRatio > vncAspectRatio) {
+        // Container is wider than VNC — fit by height
+        h = ch;
+        w = Math.round(ch * vncAspectRatio);
+    } else {
+        // Container is taller than VNC — fit by width
+        w = cw;
+        h = Math.round(cw / vncAspectRatio);
+    }
+
+    frame.style.width = w + 'px';
+    frame.style.height = h + 'px';
+}
+
+window.addEventListener('resize', resizeVncFrame);
+
+// Also observe the container for size changes
+const vncContainer = document.querySelector('.vnc-container');
+if (vncContainer) {
+    new ResizeObserver(resizeVncFrame).observe(vncContainer);
+}
+
+// ============================
+// Theme toggle
+// ============================
+
+function getTheme() {
+    return document.documentElement.getAttribute('data-theme') || 'dark';
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('ctf-theme', theme);
+    updateThemeIcon();
+}
+
+function toggleTheme() {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+function updateThemeIcon() {
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.textContent = getTheme() === 'dark' ? '\u2600' : '\u263D';
+        btn.title = getTheme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    }
+}
+
+updateThemeIcon();
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -224,6 +291,11 @@ async function updateStatus() {
             if (!frame.src || frame.src === window.location.href) {
                 frame.src = data.novnc_url + '?autoconnect=true&resize=scale';
             }
+        }
+
+        if (data.screen_width && data.screen_height && !vncAspectRatio) {
+            vncAspectRatio = data.screen_width / data.screen_height;
+            resizeVncFrame();
         }
 
         if (data.container_running) {
