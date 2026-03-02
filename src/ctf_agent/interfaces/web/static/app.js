@@ -7,45 +7,6 @@ const hitlStatus = document.getElementById('hitl-status');
 const hitlPending = document.getElementById('hitl-pending');
 
 let ws = null;
-let vncAspectRatio = null;
-
-// ============================
-// VNC iframe aspect ratio fitting
-// ============================
-
-function resizeVncFrame() {
-    const frame = document.getElementById('vnc-frame');
-    const container = frame.parentElement;
-    if (!container || !vncAspectRatio) return;
-
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
-    if (cw === 0 || ch === 0) return;
-
-    const containerRatio = cw / ch;
-
-    let w, h;
-    if (containerRatio > vncAspectRatio) {
-        // Container is wider than VNC — fit by height
-        h = ch;
-        w = Math.round(ch * vncAspectRatio);
-    } else {
-        // Container is taller than VNC — fit by width
-        w = cw;
-        h = Math.round(cw / vncAspectRatio);
-    }
-
-    frame.style.width = w + 'px';
-    frame.style.height = h + 'px';
-}
-
-window.addEventListener('resize', resizeVncFrame);
-
-// Also observe the container for size changes
-const vncContainer = document.querySelector('.vnc-container');
-if (vncContainer) {
-    new ResizeObserver(resizeVncFrame).observe(vncContainer);
-}
 
 // ============================
 // Theme toggle
@@ -74,6 +35,75 @@ function updateThemeIcon() {
 }
 
 updateThemeIcon();
+
+// ============================
+// Sidebar mode (docked / overlay)
+// ============================
+
+function getSidebarMode() {
+    return document.documentElement.getAttribute('data-sidebar') || 'docked';
+}
+
+function isSidebarOpen() {
+    return document.documentElement.getAttribute('data-sidebar-open') !== 'false';
+}
+
+function setSidebarMode(mode) {
+    document.documentElement.setAttribute('data-sidebar', mode);
+    localStorage.setItem('ctf-sidebar-mode', mode);
+
+    if (mode === 'overlay') {
+        const wasOpen = localStorage.getItem('ctf-sidebar-open') !== 'false';
+        setSidebarOpen(wasOpen);
+    } else {
+        document.documentElement.removeAttribute('data-sidebar-open');
+    }
+
+    updateSidebarModeIcon();
+    updateSidebarOverlayIcon();
+}
+
+function setSidebarOpen(open) {
+    document.documentElement.setAttribute('data-sidebar-open', open ? 'true' : 'false');
+    localStorage.setItem('ctf-sidebar-open', open ? 'true' : 'false');
+    updateSidebarOverlayIcon();
+}
+
+function toggleSidebarMode() {
+    setSidebarMode(getSidebarMode() === 'docked' ? 'overlay' : 'docked');
+}
+
+function toggleSidebarOverlay() {
+    if (getSidebarMode() !== 'overlay') return;
+    setSidebarOpen(!isSidebarOpen());
+}
+
+function updateSidebarModeIcon() {
+    const btn = document.getElementById('sidebar-mode-toggle');
+    if (!btn) return;
+    if (getSidebarMode() === 'docked') {
+        btn.textContent = '\u29C9'; // two overlapping squares — "float" hint
+        btn.title = 'Switch to overlay sidebar';
+    } else {
+        btn.textContent = '\u25EB'; // square with right half — "dock" hint
+        btn.title = 'Switch to docked sidebar';
+    }
+}
+
+function updateSidebarOverlayIcon() {
+    const btn = document.getElementById('sidebar-overlay-toggle');
+    if (!btn) return;
+    if (isSidebarOpen()) {
+        btn.textContent = '\u203A'; // › chevron right — "close"
+        btn.title = 'Hide agent panel';
+    } else {
+        btn.textContent = '\u2039'; // ‹ chevron left — "open"
+        btn.title = 'Show agent panel';
+    }
+}
+
+updateSidebarModeIcon();
+updateSidebarOverlayIcon();
 
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -291,11 +321,6 @@ async function updateStatus() {
             if (!frame.src || frame.src === window.location.href) {
                 frame.src = data.novnc_url + '?autoconnect=true&resize=scale';
             }
-        }
-
-        if (data.screen_width && data.screen_height && !vncAspectRatio) {
-            vncAspectRatio = data.screen_width / data.screen_height;
-            resizeVncFrame();
         }
 
         if (data.container_running) {

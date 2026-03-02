@@ -14,6 +14,11 @@
 
     /* Transitions */
     --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Sidebar overlay */
+    --sidebar-width: 420px;
+    --sidebar-overlay-blur: 40px;
+    --sidebar-transition: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ============================================
@@ -58,6 +63,13 @@
     --info-text: #a78bfa;
 
     --vnc-bg: #000;
+
+    --sidebar-overlay-bg: rgba(30, 30, 35, 0.78);
+    --sidebar-overlay-border: rgba(255, 255, 255, 0.12);
+    --sidebar-overlay-separator: rgba(255, 255, 255, 0.08);
+    --sidebar-overlay-elevated: rgba(255, 255, 255, 0.08);
+    --sidebar-overlay-elevated-hover: rgba(255, 255, 255, 0.14);
+    --sidebar-overlay-bg-hover: rgba(45, 45, 50, 0.85);
     color-scheme: dark;
 }
 
@@ -103,6 +115,13 @@
     --info-text: #6d28d9;
 
     --vnc-bg: #e4e4e7;
+
+    --sidebar-overlay-bg: rgba(255, 255, 255, 0.65);
+    --sidebar-overlay-border: rgba(0, 0, 0, 0.12);
+    --sidebar-overlay-separator: rgba(0, 0, 0, 0.08);
+    --sidebar-overlay-elevated: rgba(0, 0, 0, 0.06);
+    --sidebar-overlay-elevated-hover: rgba(0, 0, 0, 0.12);
+    --sidebar-overlay-bg-hover: rgba(255, 255, 255, 0.75);
     color-scheme: light;
 }
 
@@ -154,6 +173,8 @@ body {
 }
 
 .desktop-panel iframe {
+    width: 100%;
+    height: 100%;
     border: none;
     background: var(--vnc-bg);
 }
@@ -803,6 +824,439 @@ body {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--border-strong);
+}
+
+/* ============================================
+   Sidebar mode toggle button
+   ============================================ */
+.sidebar-mode-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: var(--bg-overlay);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition);
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.sidebar-mode-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+/* ============================================
+   Sidebar overlay toggle (floating button)
+   ============================================ */
+.sidebar-overlay-toggle {
+    display: none;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 101;
+    width: 28px;
+    height: 56px;
+    align-items: center;
+    justify-content: center;
+    background: var(--sidebar-overlay-bg);
+    backdrop-filter: blur(var(--sidebar-overlay-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--sidebar-overlay-blur)) saturate(180%);
+    color: var(--text-secondary);
+    border: 1px solid var(--sidebar-overlay-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition), right var(--sidebar-transition);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    font-family: var(--font-sans);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar-overlay-toggle:hover {
+    background: var(--sidebar-overlay-bg-hover);
+    color: var(--text-primary);
+    border-color: var(--sidebar-overlay-border);
+}
+
+[data-sidebar="overlay"] .sidebar-overlay-toggle {
+    display: flex;
+}
+
+[data-sidebar="overlay"][data-sidebar-open="true"] .sidebar-overlay-toggle {
+    right: calc(var(--sidebar-width) + 12px);
+}
+
+/* ============================================
+   Overlay sidebar mode
+   ============================================ */
+[data-sidebar="overlay"] .layout {
+    gap: 0;
+    background: var(--bg-base);
+}
+
+[data-sidebar="overlay"] .agent-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: var(--sidebar-width);
+    z-index: 100;
+    background: var(--sidebar-overlay-bg);
+    backdrop-filter: blur(var(--sidebar-overlay-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--sidebar-overlay-blur)) saturate(180%);
+    border-left: 1px solid var(--sidebar-overlay-border);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+    transition: transform var(--sidebar-transition), opacity var(--sidebar-transition);
+    transform: translateX(0);
+    opacity: 1;
+}
+
+[data-sidebar="overlay"][data-sidebar-open="false"] .agent-panel {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* --- Glass text (dark theme): force bright text for readability --- */
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .panel-header h2 {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item.active {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-detail {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-time {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.tool_call {
+    color: #c4b5fd;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.tool_result {
+    color: #86efac;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.thinking {
+    color: #fde68a;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.text {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.error {
+    color: #fca5a5;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .event-item .event-type.done {
+    color: #86efac;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .status-info {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .status-info span {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .recording-task-name {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .message.tool-call,
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .message.tool-result,
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .message.tool-error {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .message.agent {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .message.system {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel #playback-frame-info {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .sessions-empty {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .session-card-task {
+    color: #ffffff;
+}
+
+[data-theme="dark"][data-sidebar="overlay"] .agent-panel .session-card-meta {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* --- Glass text (light theme): force dark text for readability --- */
+[data-theme="light"][data-sidebar="overlay"] .agent-panel {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .panel-header h2 {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item {
+    color: rgba(0, 0, 0, 0.65);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item.active {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-detail {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-time {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.tool_call {
+    color: #6d28d9;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.tool_result {
+    color: #15803d;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.thinking {
+    color: #b45309;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.text {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.error {
+    color: #b91c1c;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .event-item .event-type.done {
+    color: #15803d;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .status-info {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .status-info span {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .recording-task-name {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .message.tool-call,
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .message.tool-result,
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .message.tool-error {
+    color: rgba(0, 0, 0, 0.75);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .message.agent {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .message.system {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel #playback-frame-info {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .sessions-empty {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .session-card-task {
+    color: #18181b;
+}
+
+[data-theme="light"][data-sidebar="overlay"] .agent-panel .session-card-meta {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+/* --- Glass children: make everything transparent --- */
+[data-sidebar="overlay"] .agent-panel .chat-container,
+[data-sidebar="overlay"] .agent-panel .recordings-panel,
+[data-sidebar="overlay"] .agent-panel .status-panel,
+[data-sidebar="overlay"] .agent-panel .chat-input,
+[data-sidebar="overlay"] .agent-panel .recordings-controls,
+[data-sidebar="overlay"] .agent-panel .recordings-events-header {
+    background: transparent;
+}
+
+/* Separators use subtle glass-aware color */
+[data-sidebar="overlay"] .agent-panel .panel-header {
+    background: transparent;
+    border-bottom-color: var(--sidebar-overlay-separator);
+}
+
+[data-sidebar="overlay"] .agent-panel .chat-input {
+    border-top-color: var(--sidebar-overlay-separator);
+}
+
+[data-sidebar="overlay"] .agent-panel .recordings-controls {
+    border-top-color: var(--sidebar-overlay-separator);
+}
+
+[data-sidebar="overlay"] .agent-panel .recordings-events-header {
+    border-bottom-color: var(--sidebar-overlay-separator);
+}
+
+/* --- Glass buttons: override all buttons inside overlay --- */
+[data-sidebar="overlay"] .agent-panel .header-actions button,
+[data-sidebar="overlay"] .agent-panel .recordings-back-btn,
+[data-sidebar="overlay"] .agent-panel .recordings-controls button {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+    color: var(--text-primary);
+}
+
+[data-sidebar="overlay"] .agent-panel .header-actions button:hover,
+[data-sidebar="overlay"] .agent-panel .recordings-back-btn:hover,
+[data-sidebar="overlay"] .agent-panel .recordings-controls button:hover {
+    background: var(--sidebar-overlay-elevated-hover);
+    border-color: var(--sidebar-overlay-border);
+    color: var(--text-primary);
+}
+
+/* Chat input field */
+[data-sidebar="overlay"] .agent-panel .chat-input input {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+    color: var(--text-primary);
+}
+
+[data-sidebar="overlay"] .agent-panel .chat-input input:focus {
+    border-color: var(--sidebar-overlay-border);
+    box-shadow: none;
+}
+
+[data-sidebar="overlay"] .agent-panel .chat-input input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Send button */
+[data-sidebar="overlay"] .agent-panel .chat-input button {
+    background: var(--text-primary);
+    color: var(--bg-base);
+}
+
+/* Recording speed select */
+[data-sidebar="overlay"] .agent-panel .recordings-controls select {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+    color: var(--text-primary);
+}
+
+/* --- Glass messages: tone down opaque colored backgrounds --- */
+[data-sidebar="overlay"] .agent-panel .message.user {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.18);
+}
+
+[data-sidebar="overlay"] .agent-panel .message.agent {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+}
+
+[data-sidebar="overlay"] .agent-panel .message.tool-call {
+    background: rgba(139, 92, 246, 0.1);
+    border-left-color: rgba(139, 92, 246, 0.4);
+}
+
+[data-sidebar="overlay"] .agent-panel .message.tool-result {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: rgba(34, 197, 94, 0.4);
+}
+
+[data-sidebar="overlay"] .agent-panel .message.tool-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-sidebar="overlay"] .agent-panel .message.approval-request {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.15);
+    border-left-color: rgba(245, 158, 11, 0.4);
+}
+
+[data-sidebar="overlay"] .agent-panel .approval-args {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+}
+
+/* --- Glass event items --- */
+[data-sidebar="overlay"] .agent-panel .event-item:hover {
+    background: var(--sidebar-overlay-elevated);
+}
+
+[data-sidebar="overlay"] .agent-panel .event-item.active {
+    background: var(--sidebar-overlay-elevated-hover);
+    border-left-color: rgba(59, 130, 246, 0.5);
+}
+
+/* --- Glass session cards --- */
+[data-sidebar="overlay"] .agent-panel .session-card {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+}
+
+[data-sidebar="overlay"] .agent-panel .session-card:hover {
+    background: var(--sidebar-overlay-elevated-hover);
+    border-color: var(--sidebar-overlay-border);
+}
+
+[data-sidebar="overlay"] .agent-panel .session-card.active {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.25);
+}
+
+/* Status badge */
+[data-sidebar="overlay"] .agent-panel .status-badge {
+    background: var(--sidebar-overlay-elevated);
+}
+
+[data-sidebar="overlay"] .agent-panel .status-badge.connected {
+    background: rgba(34, 197, 94, 0.12);
+}
+
+[data-sidebar="overlay"] .agent-panel .status-badge.disconnected {
+    background: rgba(239, 68, 68, 0.12);
 }
 
 /* ============================================

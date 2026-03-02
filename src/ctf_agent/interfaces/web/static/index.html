@@ -4,16 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CTF Desktop Agent</title>
-    <link rel="stylesheet" href="/static/style.css?v=8">
+    <link rel="stylesheet" href="/static/style.css?v=15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
-        // Apply theme immediately to prevent flash of wrong theme
+        // Apply theme and sidebar mode immediately to prevent flash
         (function() {
             const saved = localStorage.getItem('ctf-theme');
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             document.documentElement.setAttribute('data-theme', saved || (prefersDark ? 'dark' : 'light'));
+
+            const sidebarMode = localStorage.getItem('ctf-sidebar-mode') || 'docked';
+            const sidebarOpen = localStorage.getItem('ctf-sidebar-open') !== 'false';
+            document.documentElement.setAttribute('data-sidebar', sidebarMode);
+            if (sidebarMode === 'overlay') {
+                document.documentElement.setAttribute('data-sidebar-open', sidebarOpen ? 'true' : 'false');
+            }
         })();
     </script>
 </head>
@@ -24,6 +31,7 @@
             <div class="panel-header">
                 <h2 id="desktop-title">Live Desktop</h2>
                 <div class="header-actions">
+                    <button id="sidebar-mode-toggle" class="sidebar-mode-toggle" onclick="toggleSidebarMode()" title="Toggle sidebar mode"></button>
                     <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
                     <span id="container-status" class="status-badge">Connecting...</span>
                 </div>
@@ -31,6 +39,7 @@
             <div class="vnc-container">
                 <iframe id="vnc-frame" src="" frameborder="0" allow="fullscreen" allowfullscreen></iframe>
             </div>
+            <button id="sidebar-overlay-toggle" class="sidebar-overlay-toggle" onclick="toggleSidebarOverlay()" title="Toggle agent panel"></button>
             <img id="playback-screenshot" class="playback-screenshot" style="display:none" alt="Recording screenshot" />
         </div>
 
@@ -113,6 +122,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=8"></script>
+    <script src="/static/app.js?v=9"></script>
 </body>
 </html>
