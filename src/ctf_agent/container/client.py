@@ -23,6 +23,19 @@ class ShellResult:
     execution_id: str
 
 
+@dataclass
+class FocusWindowResult:
+    success: bool
+    message: str
+    window_id: int | None = None
+
+
+@dataclass
+class WindowInfo:
+    window_id: int
+    name: str
+
+
 class ContainerClient:
     """Async HTTP client for communicating with the container API."""
 
@@ -116,6 +129,25 @@ class ContainerClient:
             json={"path": path, "content": content, "binary": binary},
         )
         resp.raise_for_status()
+
+    async def focus_window(
+        self,
+        name: str | None = None,
+        class_name: str | None = None,
+        window_id: int | None = None,
+    ) -> FocusWindowResult:
+        payload = {"name": name, "class_name": class_name, "window_id": window_id}
+        resp = await self._http.post("/window/focus", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        return FocusWindowResult(**data)
+
+    async def list_windows(self) -> tuple[list[WindowInfo], int | None]:
+        resp = await self._http.get("/window/list")
+        resp.raise_for_status()
+        data = resp.json()
+        windows = [WindowInfo(**w) for w in data["windows"]]
+        return windows, data.get("active_window_id")
 
     async def close(self) -> None:
         await self._http.aclose()

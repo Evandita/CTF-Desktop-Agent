@@ -230,6 +230,47 @@ async def list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="ctf_focus_window",
+            description=(
+                "Bring a window to the foreground and give it focus on the "
+                "container desktop. Use this before interacting with a GUI app "
+                "via mouse/keyboard. Search by window name (substring match, "
+                "e.g., 'Firefox', 'Ghidra', 'CTF Agent Terminal') or by "
+                "class_name or window_id. The terminal is auto-focused when "
+                "using ctf_execute, so you only need this for GUI apps."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Window title substring to match",
+                    },
+                    "class_name": {
+                        "type": "string",
+                        "description": "Window WM_CLASS to match",
+                    },
+                    "window_id": {
+                        "type": "integer",
+                        "description": "Specific window ID",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="ctf_list_windows",
+            description=(
+                "List all visible windows on the container desktop with their "
+                "names and IDs. Use this to discover what windows are open "
+                "before using ctf_focus_window."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
     ]
 
     # Add ask_human tool when HITL agent questions are enabled
@@ -458,6 +499,31 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
                         ),
                     )
                 ]
+            )
+
+        elif name == "ctf_focus_window":
+            result = await client.focus_window(
+                name=arguments.get("name"),
+                class_name=arguments.get("class_name"),
+                window_id=arguments.get("window_id"),
+            )
+            return CallToolResult(
+                content=[TextContent(type="text", text=result.message)],
+                isError=not result.success,
+            )
+
+        elif name == "ctf_list_windows":
+            windows, active_id = await client.list_windows()
+            if not windows:
+                text = "No visible windows found"
+            else:
+                lines = []
+                for w in windows:
+                    marker = " (active)" if active_id and w.window_id == active_id else ""
+                    lines.append(f"  [{w.window_id}] {w.name}{marker}")
+                text = "Open windows:\n" + "\n".join(lines)
+            return CallToolResult(
+                content=[TextContent(type="text", text=text)]
             )
 
         else:

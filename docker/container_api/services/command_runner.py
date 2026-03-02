@@ -8,6 +8,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
+from services.window_manager import raise_terminal
+
 logger = logging.getLogger(__name__)
 
 # Store for async command results
@@ -88,6 +90,9 @@ def run_command_visible(
     if not _ensure_tmux_session():
         logger.warning("tmux session unavailable, falling back to silent execution")
         return run_command_silent(command, timeout, working_dir)
+
+    # Auto-raise the terminal window so the command is visible via noVNC
+    raise_terminal()
 
     cmd_file = os.path.join(EXEC_TEMP_DIR, f"{exec_id}.cmd")
     stdout_file = os.path.join(EXEC_TEMP_DIR, f"{exec_id}.stdout")

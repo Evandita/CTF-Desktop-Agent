@@ -27,6 +27,7 @@ from ctf_agent.tools.mouse import MouseClickTool, MouseMoveTool, MouseScrollTool
 from ctf_agent.tools.keyboard import TypeTextTool, PressKeyTool
 from ctf_agent.tools.shell import ExecuteCommandTool
 from ctf_agent.tools.file_ops import ReadFileTool, WriteFileTool
+from ctf_agent.tools.window import FocusWindowTool, ListWindowsTool
 from ctf_agent.agent.core import AgentCore, AgentEvent
 
 logger = logging.getLogger(__name__)
@@ -355,4 +356,6 @@ def _register_tools(client: ContainerClient) -> ToolRegistry:
     registry.register(ExecuteCommandTool(client))
     registry.register(ReadFileTool(client))
     registry.register(WriteFileTool(client))
+    registry.register(FocusWindowTool(client))
+    registry.register(ListWindowsTool(client))
     return registry
