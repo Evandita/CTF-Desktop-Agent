@@ -366,6 +366,7 @@ class DesktopViewer {
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             const coords = this._getCoords(e);
+            if (!coords) return;
             const direction = e.deltaY > 0 ? 'down' : 'up';
             this._send({
                 type: 'mouse',
@@ -449,10 +450,21 @@ class DesktopViewer {
             offsetY = (containerH - renderedH) / 2;
         }
 
-        const x = Math.round((mouseEvent.clientX - rect.left - offsetX) * this.desktopWidth / renderedW);
-        const y = Math.round((mouseEvent.clientY - rect.top - offsetY) * this.desktopHeight / renderedH);
+        // Position relative to the rendered desktop area (pixels)
+        const rawX = mouseEvent.clientX - rect.left - offsetX;
+        const rawY = mouseEvent.clientY - rect.top - offsetY;
 
-        // Clamp to valid desktop range
+        // Reject clicks clearly in the letterbox/pillarbox bars.
+        // A small margin (5px) allows edge clicks through despite rounding.
+        const margin = 5;
+        if (rawX < -margin || rawX > renderedW + margin ||
+            rawY < -margin || rawY > renderedH + margin) {
+            return null;
+        }
+
+        // Map to desktop coordinates and clamp to valid range
+        const x = Math.round(rawX * this.desktopWidth / renderedW);
+        const y = Math.round(rawY * this.desktopHeight / renderedH);
         return {
             x: Math.max(0, Math.min(this.desktopWidth - 1, x)),
             y: Math.max(0, Math.min(this.desktopHeight - 1, y)),
@@ -461,6 +473,7 @@ class DesktopViewer {
 
     _sendMouse(action, mouseEvent) {
         const coords = this._getCoords(mouseEvent);
+        if (!coords) return; // click was in the letterbox/pillarbox area
         this._send({ type: 'mouse', action, x: coords.x, y: coords.y });
     }
 
