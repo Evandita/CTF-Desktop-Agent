@@ -31,6 +31,12 @@
             <div class="panel-header">
                 <h2 id="desktop-title">Live Desktop</h2>
                 <div class="header-actions">
+                    <select id="clipboard-mode" class="clipboard-mode-select" onchange="setClipboardMode(this.value)" title="Clipboard sharing mode">
+                        <option value="disabled">Clipboard: Off</option>
+                        <option value="host_to_guest">Host → Guest</option>
+                        <option value="guest_to_host">Guest → Host</option>
+                        <option value="bidirectional">Bidirectional</option>
+                    </select>
                     <button id="sidebar-mode-toggle" class="sidebar-mode-toggle" onclick="toggleSidebarMode()" title="Toggle sidebar mode"></button>
                     <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
                     <span id="container-status" class="status-badge">Connecting...</span>
@@ -124,7 +130,7 @@
         </div>
     </div>
 
-    <script src="/static/webrtc-viewer.js?v=1"></script>
+    <script src="/static/webrtc-viewer.js?v=3"></script>
     <script src="/static/app.js?v=10"></script>
 </body>
 </html>

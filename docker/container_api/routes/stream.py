@@ -5,14 +5,17 @@ traverse Docker bridge networking (e.g. Docker Desktop on macOS/Windows).
 
 Protocol:
     Server → Client:  binary messages (JPEG frames)
+                      JSON text messages (clipboard updates)
     Client → Server:  JSON text messages (input events, same format as
                       the WebRTC DataChannel)
 """
 
 import asyncio
 import io
+import json
 import logging
 import os
+import subprocess
 
 import mss
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -38,6 +41,12 @@ async def desktop_stream(websocket: WebSocket):
     os.environ["DISPLAY"] = DISPLAY
     sct = mss.mss()
 
+    state = {
+        "clipboard_mode": "disabled",
+        "clipboard_task": None,
+        "last_set_text": None,  # anti-echo: last text set by host→guest
+    }
+
     # Spawn a task to send frames; the main loop handles incoming messages
     send_task = asyncio.create_task(_send_frames(websocket, sct, fps, quality))
     loop = asyncio.get_running_loop()
@@ -45,19 +54,94 @@ async def desktop_stream(websocket: WebSocket):
     try:
         while True:
             raw = await websocket.receive_text()
-            # Run blocking xdotool calls in a thread so they don't stall
-            # the event loop (and frame sending)
-            loop.run_in_executor(None, _handle_input, raw)
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            msg_type = data.get("type")
+
+            if msg_type == "clipboard_mode":
+                _update_clipboard_mode(state, websocket, data.get("mode", "disabled"))
+            elif msg_type == "clipboard":
+                if state["clipboard_mode"] in ("host_to_guest", "bidirectional"):
+                    text = data.get("text", "")
+                    state["last_set_text"] = text
+                    loop.run_in_executor(None, _handle_clipboard, data)
+            else:
+                # mouse / key events — run in thread to avoid blocking
+                loop.run_in_executor(None, _handle_input_parsed, data)
     except WebSocketDisconnect:
         pass
     except Exception:
         logger.debug("Desktop stream closed", exc_info=True)
     finally:
         send_task.cancel()
+        if state["clipboard_task"]:
+            state["clipboard_task"].cancel()
         try:
             sct.close()
         except Exception:
             pass
+
+
+def _update_clipboard_mode(state: dict, websocket: WebSocket, mode: str):
+    """Update clipboard mode and start/stop the clipboard monitor task."""
+    if mode not in ("disabled", "host_to_guest", "guest_to_host", "bidirectional"):
+        mode = "disabled"
+    state["clipboard_mode"] = mode
+
+    # Cancel existing monitor
+    if state["clipboard_task"]:
+        state["clipboard_task"].cancel()
+        state["clipboard_task"] = None
+
+    # Start monitor if guest→host is enabled
+    if mode in ("guest_to_host", "bidirectional"):
+        state["clipboard_task"] = asyncio.create_task(
+            _monitor_clipboard(websocket, state)
+        )
+
+    logger.debug("Clipboard mode set to: %s", mode)
+
+
+def _read_clipboard() -> str:
+    """Read clipboard text via xclip (runs in thread pool)."""
+    proc = subprocess.run(
+        ["xclip", "-selection", "clipboard", "-o"],
+        capture_output=True,
+        timeout=2,
+        env={"DISPLAY": DISPLAY},
+    )
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+async def _monitor_clipboard(websocket: WebSocket, state: dict):
+    """Poll xclip and push clipboard changes to the browser."""
+    last_text = ""
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            try:
+                # Run blocking xclip in thread pool to avoid stalling the event loop
+                current_text = await loop.run_in_executor(None, _read_clipboard)
+
+                # Skip if unchanged or if this is an echo of a host→guest paste
+                if current_text != last_text:
+                    if current_text != state.get("last_set_text"):
+                        await websocket.send_text(json.dumps({
+                            "type": "clipboard",
+                            "action": "update",
+                            "text": current_text,
+                        }))
+                    last_text = current_text
+            except Exception:
+                logger.debug("Clipboard monitor error", exc_info=True)
+
+            await asyncio.sleep(0.5)
+    except asyncio.CancelledError:
+        pass
 
 
 async def _send_frames(
@@ -84,23 +168,14 @@ async def _send_frames(
         logger.debug("Frame sender stopped", exc_info=True)
 
 
-def _handle_input(raw: str):
-    """Route an input JSON message to xdotool/xclip (same format as DataChannel)."""
-    import json
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return
-
+def _handle_input_parsed(data: dict):
+    """Route a parsed input message to xdotool (mouse/key only)."""
     msg_type = data.get("type")
 
     if msg_type == "mouse":
         _handle_mouse(data)
     elif msg_type == "key":
         _handle_key(data)
-    elif msg_type == "clipboard":
-        _handle_clipboard(data)
 
 
 def _handle_mouse(data: dict):
@@ -143,8 +218,6 @@ def _handle_key(data: dict):
 
 
 def _handle_clipboard(data: dict):
-    import subprocess
-
     if data.get("action") == "set":
         text = data.get("text", "")
         try:

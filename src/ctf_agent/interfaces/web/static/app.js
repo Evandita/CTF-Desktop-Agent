@@ -310,6 +310,26 @@ async function clearContext() {
 }
 
 // ============================
+// Clipboard Mode
+// ============================
+
+function setClipboardMode(mode) {
+    localStorage.setItem('ctf-clipboard-mode', mode);
+    const select = document.getElementById('clipboard-mode');
+    if (select) select.value = mode;
+    if (_desktopViewer) {
+        _desktopViewer.setClipboardMode(mode);
+    }
+}
+
+// Restore saved clipboard mode on load
+(function initClipboardMode() {
+    const saved = localStorage.getItem('ctf-clipboard-mode') || 'disabled';
+    const select = document.getElementById('clipboard-mode');
+    if (select) select.value = saved;
+})();
+
+// ============================
 // WebRTC Desktop Viewer
 // ============================
 

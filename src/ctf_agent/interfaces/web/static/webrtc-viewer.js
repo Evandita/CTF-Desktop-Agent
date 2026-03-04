@@ -8,6 +8,12 @@
  * Input events (mouse, keyboard, clipboard) are sent via:
  *   - WebRTC DataChannel (when using WebRTC)
  *   - The same WebSocket connection (when using WS fallback)
+ *
+ * Clipboard sharing uses two strategies:
+ *   - Clipboard API (navigator.clipboard) when available (secure context)
+ *     → noVNC-style: sync on focus events
+ *   - Paste event fallback when Clipboard API is unavailable
+ *     → intercept paste event for host→guest, hidden textarea for guest→host
  */
 class DesktopViewer {
     constructor(videoElement, overlayCanvas, signalingUrl, containerApiUrl) {
@@ -28,6 +34,20 @@ class DesktopViewer {
         this._destroyed = false;
         this._webrtcAttempts = 0;
         this._maxWebrtcAttempts = 1; // Try WebRTC once before falling back to WS
+
+        // Clipboard sharing
+        this.clipboardMode = localStorage.getItem('ctf-clipboard-mode') || 'disabled';
+        this._clipboardPollTimer = null;
+        this._lastSentClipboard = '';     // anti-echo: last text sent host→guest
+        this._lastReceivedClipboard = ''; // anti-echo: last text received guest→host
+        this._pasteTimeout = null;        // fallback: timeout for paste event
+
+        // Detect Clipboard API availability (requires secure context)
+        this._hasClipboardAPI = !!(navigator.clipboard && navigator.clipboard.readText);
+        console.log('[clipboard] Clipboard API available:', this._hasClipboardAPI);
+
+        // Hidden textarea for guest→host clipboard when Clipboard API unavailable
+        this._clipboardTextarea = null;
 
         // For WS mode: draw JPEG frames on a canvas placed behind the overlay
         this._frameCanvas = document.createElement('canvas');
@@ -101,6 +121,8 @@ class DesktopViewer {
                 this.connected = true;
                 this.mode = 'webrtc';
                 this._setStatus(null);
+                this._send({ type: 'clipboard_mode', mode: this.clipboardMode });
+                this._updateClipboardPolling();
                 console.log('Desktop viewer: WebRTC connected');
             };
             this.dataChannel.onclose = () => {
@@ -173,6 +195,8 @@ class DesktopViewer {
                 this.connected = true;
                 this.mode = 'ws';
                 this._setStatus(null);
+                this._send({ type: 'clipboard_mode', mode: this.clipboardMode });
+                this._stopClipboardPolling(); // WS mode uses push, not polling
                 console.log('Desktop viewer: WebSocket connected to', wsUrl);
                 // Hide video element, show frame canvas for WS rendering
                 this.video.style.display = 'none';
@@ -182,6 +206,8 @@ class DesktopViewer {
             this.ws.onmessage = (event) => {
                 if (event.data instanceof Blob) {
                     this._renderFrame(event.data);
+                } else if (typeof event.data === 'string') {
+                    this._handleServerMessage(event.data);
                 }
             };
 
@@ -224,6 +250,7 @@ class DesktopViewer {
     async disconnect() {
         this._destroyed = true;
         this._clearReconnect();
+        this._stopClipboardPolling();
         if (this.connectionId) {
             fetch(`${this.signalingUrl}/disconnect`, {
                 method: 'POST',
@@ -305,6 +332,16 @@ class DesktopViewer {
         // Focus canvas on click so keyboard events are captured
         canvas.addEventListener('mousedown', () => canvas.focus());
 
+        // --- Clipboard sync ---
+        if (this._hasClipboardAPI) {
+            // Preferred: noVNC-style focus-based sync using Clipboard API
+            canvas.addEventListener('focus', () => this._syncClipboardToGuest());
+        } else {
+            // Fallback: use paste events when Clipboard API is unavailable
+            console.log('[clipboard] Using paste event fallback (no secure context)');
+            canvas.addEventListener('paste', (e) => this._handlePasteEvent(e));
+        }
+
         // --- Mouse events ---
         canvas.addEventListener('click', (e) => {
             e.preventDefault();
@@ -342,14 +379,26 @@ class DesktopViewer {
 
         // --- Keyboard events ---
         canvas.addEventListener('keydown', (e) => {
+            // Fallback mode: let Ctrl+V / Cmd+V through so the paste event fires
+            if (!this._hasClipboardAPI && (e.ctrlKey || e.metaKey) && e.key === 'v') {
+                // Set a timeout: if paste event doesn't fire within 150ms,
+                // send Ctrl+V directly to the container anyway
+                if (this._pasteTimeout) clearTimeout(this._pasteTimeout);
+                this._pasteTimeout = setTimeout(() => {
+                    this._pasteTimeout = null;
+                    this._send({ type: 'key', action: 'key_combo', keys: ['ctrl', 'v'] });
+                }, 150);
+                return; // don't preventDefault — let the paste event fire
+            }
+
             e.preventDefault();
 
             if (e.ctrlKey || e.altKey || e.metaKey) {
                 const keys = [];
-                if (e.ctrlKey) keys.push('ctrl');
+                // Map Cmd (metaKey) → Ctrl for Mac users controlling Linux desktop
+                if (e.ctrlKey || e.metaKey) keys.push('ctrl');
                 if (e.altKey) keys.push('alt');
                 if (e.shiftKey) keys.push('shift');
-                if (e.metaKey) keys.push('super');
                 const mapped = this._mapSpecialKey(e.key);
                 if (mapped) keys.push(mapped);
                 else if (e.key.length === 1) keys.push(e.key.toLowerCase());
@@ -366,15 +415,6 @@ class DesktopViewer {
             const mapped = this._mapSpecialKey(e.key);
             if (mapped) {
                 this._send({ type: 'key', action: 'key', key: mapped });
-            }
-        });
-
-        // --- Clipboard paste ---
-        canvas.addEventListener('paste', (e) => {
-            const text = (e.clipboardData || window.clipboardData).getData('text');
-            if (text) {
-                this._send({ type: 'clipboard', action: 'set', text });
-                this._send({ type: 'key', action: 'key_combo', keys: ['ctrl', 'v'] });
             }
         });
     }
@@ -422,6 +462,146 @@ class DesktopViewer {
     _sendMouse(action, mouseEvent) {
         const coords = this._getCoords(mouseEvent);
         this._send({ type: 'mouse', action, x: coords.x, y: coords.y });
+    }
+
+    // ---------------------------------------------------------------
+    // Clipboard sharing
+    // ---------------------------------------------------------------
+
+    setClipboardMode(mode) {
+        this.clipboardMode = mode;
+        localStorage.setItem('ctf-clipboard-mode', mode);
+        // Notify the container of the new mode
+        this._send({ type: 'clipboard_mode', mode });
+        this._updateClipboardPolling();
+    }
+
+    /**
+     * noVNC-style: read the host system clipboard on focus and send to container.
+     * Only used when Clipboard API is available (secure context).
+     */
+    async _syncClipboardToGuest() {
+        if (this.clipboardMode !== 'host_to_guest' && this.clipboardMode !== 'bidirectional') return;
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text && text !== this._lastSentClipboard) {
+                this._lastSentClipboard = text;
+                this._send({ type: 'clipboard', action: 'set', text });
+                console.log('[clipboard] host→guest synced:', text.substring(0, 50));
+            }
+        } catch (err) {
+            console.warn('[clipboard] readText failed:', err.name, err.message);
+        }
+    }
+
+    /**
+     * Paste event fallback for host→guest when Clipboard API is unavailable.
+     * The keydown handler lets Ctrl+V through (no preventDefault) so this fires.
+     * clipboardData is always available in paste events — no permission needed.
+     */
+    _handlePasteEvent(e) {
+        e.preventDefault();
+        // Cancel the keydown timeout — we handle it here
+        if (this._pasteTimeout) {
+            clearTimeout(this._pasteTimeout);
+            this._pasteTimeout = null;
+        }
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        console.log('[clipboard] paste event, got', text ? text.length : 0, 'chars');
+        if (text && (this.clipboardMode === 'host_to_guest' || this.clipboardMode === 'bidirectional')) {
+            this._lastSentClipboard = text;
+            this._send({ type: 'clipboard', action: 'set', text });
+            console.log('[clipboard] host→guest via paste:', text.substring(0, 50));
+        }
+        // Send Ctrl+V to the container so the app pastes from the now-synced clipboard
+        this._send({ type: 'key', action: 'key_combo', keys: ['ctrl', 'v'] });
+    }
+
+    _handleServerMessage(raw) {
+        try {
+            const msg = JSON.parse(raw);
+            if (msg.type === 'clipboard' && msg.action === 'update') {
+                console.log('[clipboard] guest→host received:', msg.text.substring(0, 50));
+                if (this.clipboardMode === 'guest_to_host' || this.clipboardMode === 'bidirectional') {
+                    // Anti-echo: mark this text so focus/paste won't re-send it
+                    this._lastSentClipboard = msg.text;
+                    this._writeToHostClipboard(msg.text);
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to parse server message:', e);
+        }
+    }
+
+    /**
+     * Write text to the host system clipboard.
+     * Uses Clipboard API if available, falls back to hidden textarea + execCommand.
+     */
+    async _writeToHostClipboard(text) {
+        if (this._hasClipboardAPI) {
+            try {
+                await navigator.clipboard.writeText(text);
+                this._lastReceivedClipboard = text;
+                console.log('[clipboard] host clipboard updated via API:', text.substring(0, 50));
+                return;
+            } catch (err) {
+                console.warn('[clipboard] writeText failed, trying textarea fallback:', err);
+            }
+        }
+
+        // Fallback: hidden textarea + execCommand('copy')
+        try {
+            if (!this._clipboardTextarea) {
+                this._clipboardTextarea = document.createElement('textarea');
+                this._clipboardTextarea.style.cssText =
+                    'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+                document.body.appendChild(this._clipboardTextarea);
+            }
+            this._clipboardTextarea.value = text;
+            this._clipboardTextarea.select();
+            document.execCommand('copy');
+            // Return focus to the canvas
+            this.canvas.focus();
+            this._lastReceivedClipboard = text;
+            console.log('[clipboard] host clipboard updated via textarea:', text.substring(0, 50));
+        } catch (err) {
+            console.warn('[clipboard] textarea copy fallback also failed:', err);
+        }
+    }
+
+    _updateClipboardPolling() {
+        // In WebRTC mode, guest→host requires REST polling since we can't
+        // push from the server DataChannel easily. In WS mode, the server
+        // pushes clipboard updates directly, so no polling needed.
+        const needsPolling = this.mode === 'webrtc'
+            && (this.clipboardMode === 'guest_to_host' || this.clipboardMode === 'bidirectional');
+        if (needsPolling) {
+            this._startClipboardPolling();
+        } else {
+            this._stopClipboardPolling();
+        }
+    }
+
+    _startClipboardPolling() {
+        this._stopClipboardPolling();
+        if (!this.containerApiUrl) return;
+        this._clipboardPollTimer = setInterval(async () => {
+            try {
+                const resp = await fetch(`${this.containerApiUrl}/clipboard/get`);
+                const data = await resp.json();
+                if (data.ok && data.text && data.text !== this._lastReceivedClipboard) {
+                    this._lastReceivedClipboard = data.text;
+                    this._writeToHostClipboard(data.text);
+                }
+            } catch (e) { /* ignore polling errors */ }
+        }, 1000);
+    }
+
+    _stopClipboardPolling() {
+        if (this._clipboardPollTimer) {
+            clearInterval(this._clipboardPollTimer);
+            this._clipboardPollTimer = null;
+        }
     }
 
     // ---------------------------------------------------------------

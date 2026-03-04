@@ -70,6 +70,9 @@ class DesktopVideoTrack(VideoStreamTrack):
 class DataChannelInputHandler:
     """Routes input messages from WebRTC DataChannel to xdotool/xclip."""
 
+    def __init__(self):
+        self.clipboard_mode = "disabled"
+
     def handle_message(self, raw: str) -> None:
         try:
             data = json.loads(raw)
@@ -79,7 +82,10 @@ class DataChannelInputHandler:
 
         msg_type = data.get("type")
 
-        if msg_type == "mouse":
+        if msg_type == "clipboard_mode":
+            self.clipboard_mode = data.get("mode", "disabled")
+            logger.debug("DataChannel clipboard mode set to: %s", self.clipboard_mode)
+        elif msg_type == "mouse":
             self._handle_mouse(data)
         elif msg_type == "key":
             self._handle_key(data)
@@ -128,6 +134,8 @@ class DataChannelInputHandler:
                 input_control.key_combo(keys)
 
     def _handle_clipboard(self, data: dict) -> None:
+        if self.clipboard_mode not in ("host_to_guest", "bidirectional"):
+            return
         if data.get("action") == "set":
             text = data.get("text", "")
             try:

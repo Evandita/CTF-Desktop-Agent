@@ -203,6 +203,31 @@ body {
     outline-offset: -2px;
 }
 
+/* Clipboard mode selector */
+.clipboard-mode-select {
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--bg-overlay);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition);
+    font-family: var(--font-sans);
+    outline: none;
+}
+
+.clipboard-mode-select:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.clipboard-mode-select:focus {
+    border-color: var(--accent);
+}
+
 .stream-status {
     position: absolute;
     top: 50%;
@@ -1210,6 +1235,13 @@ body {
 [data-sidebar="overlay"] .agent-panel .chat-input button {
     background: var(--text-primary);
     color: var(--bg-base);
+}
+
+/* Clipboard mode select */
+[data-sidebar="overlay"] .clipboard-mode-select {
+    background: var(--sidebar-overlay-elevated);
+    border-color: var(--sidebar-overlay-separator);
+    color: var(--text-primary);
 }
 
 /* Recording speed select */
