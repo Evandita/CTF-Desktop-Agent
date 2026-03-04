@@ -40,7 +40,7 @@ src/ctf_agent/
     mcp_server.py          # MCP server exposing tools to Claude Code
     web/
       app.py               # FastAPI web UI + WebSocket streaming
-      static/              # index.html, app.js, style.css
+      static/              # index.html, app.js, style.css, webrtc-viewer.js
   llm/
     base.py                # Abstract LLMProvider interface
     claude_provider.py     # Anthropic SDK — native vision + tool use
@@ -63,13 +63,13 @@ src/ctf_agent/
 ```
 docker/
   Dockerfile               # Kali Linux image with security tools
-  supervisord.conf          # Manages: XVNC, XFCE4, noVNC, container API, tmux
+  supervisord.conf          # Manages: XVFB, XFCE4, container API, tmux, visible terminal
   entrypoint.sh             # Container startup
   scripts/ctf-exec.sh       # Visible terminal command executor
   container_api/
     server.py               # FastAPI server inside container (port 8888)
-    routes/                 # health, screenshot, input, shell, filesystem, clipboard
-    services/               # command_runner, display, input_control, file_manager
+    routes/                 # health, screenshot, input, shell, filesystem, clipboard, webrtc, stream, window
+    services/               # command_runner, display, input_control, file_manager, webrtc_stream
 ```
 
 ```
@@ -122,7 +122,9 @@ Key env vars (see `.env.example`):
 
 ## Container
 
-- Kali Linux with XFCE4 desktop, XVFB, x11vnc (5900), noVNC (6080), FastAPI API (8888)
+- Kali Linux with XFCE4 desktop, XVFB, FastAPI API (8888)
+- Desktop streamed to browser via WebRTC (with WebSocket JPEG fallback)
+- VirtualBox-style bidirectional clipboard sharing (Disabled / Host→Guest / Guest→Host / Bidirectional)
 - Pre-installed: nmap, gobuster, john, hashcat, gdb+pwndbg, radare2, Ghidra, sqlmap, binwalk, steghide, pwntools, metasploit, wireshark-cli, hydra, netcat, firefox-esr
-- Commands execute in a visible tmux terminal (user can watch via noVNC)
+- Commands execute in a visible tmux terminal (user can watch via Web UI desktop viewer)
 - Container API uses xdotool for input, scrot for screenshots, xclip for clipboard

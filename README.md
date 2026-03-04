@@ -89,7 +89,8 @@ claude
 ## Features
 
 - **Full Kali Linux desktop** in Docker with XFCE4 and XVFB
-- **VNC + noVNC** for live desktop viewing in browser
+- **Live desktop streaming** via WebRTC (with WebSocket JPEG fallback for Docker environments)
+- **Bidirectional clipboard sharing** — VirtualBox-style modes: Disabled, Host→Guest, Guest→Host, Bidirectional
 - **3 LLM backends**: Claude API, Ollama (local), or Claude Code CLI
 - **Tool-based agent**: screenshot, mouse, keyboard, shell commands, file I/O
 - **Human-in-the-Loop (HITL)**: tool approval, periodic checkpoints, agent-to-human questions

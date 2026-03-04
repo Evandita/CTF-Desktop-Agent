@@ -146,11 +146,16 @@ make web PROVIDER=claude-code
 ```
 
 **Features:**
-- Live noVNC desktop viewer (embedded iframe)
+- Live desktop viewer via WebRTC (with WebSocket JPEG fallback for Docker networking)
+- Bidirectional clipboard sharing — VirtualBox-style modes (Disabled / Host→Guest / Guest→Host / Bidirectional)
+- Mouse and keyboard input forwarded to the container desktop
 - Real-time chat with the agent via WebSocket
 - Tool call and result display
 - HITL approval dialogs inline in chat (approve/reject with optional message)
 - Status panel showing message count, image count, HITL state, and pending approvals
+- Session recording playback with scrubber and screenshot display
+- Docked/overlay sidebar mode toggle
+- Light/dark theme toggle
 - Clear context and stop agent controls
 
 ### API Endpoints
@@ -163,7 +168,11 @@ make web PROVIDER=claude-code
 | `/api/stop` | POST | Stop the running agent task |
 | `/api/clear` | POST | Clear conversation context |
 | `/api/hitl/respond` | POST | Submit HITL approval (REST fallback) |
-| `/ws` | WebSocket | Real-time event streaming |
+| `/api/webrtc/offer` | POST | WebRTC signaling — SDP offer/answer exchange |
+| `/api/webrtc/disconnect` | POST | Close a WebRTC connection |
+| `/api/recordings` | GET | List session recordings |
+| `/api/recordings/{id}` | GET/DELETE | Get or delete a recording |
+| `/ws` | WebSocket | Real-time agent event streaming |
 
 ### WebSocket Event Types
 
@@ -251,9 +260,7 @@ llm:
 container:
   image_name: "ctf-desktop-agent:latest"
   container_name: "ctf-agent-desktop"
-  vnc_port: 5900                  # VNC server port
-  novnc_port: 6080                # noVNC web viewer port
-  api_port: 8888                  # Container API port
+  api_port: 8888                  # Container API port (also serves WebRTC/WS streaming)
   screen_width: 1024              # Virtual display width
   screen_height: 768              # Virtual display height
   memory_limit: "4g"              # Docker memory limit
@@ -287,9 +294,7 @@ The Docker container runs a full Kali Linux desktop environment with:
 
 - **XFCE4** desktop environment
 - **XVFB** virtual framebuffer (headless X server)
-- **x11vnc** VNC server on port 5900
-- **noVNC** web-based VNC client on port 6080
-- **Container API** (FastAPI) on port 8888
+- **Container API** (FastAPI) on port 8888 — includes WebRTC streaming, WebSocket desktop streaming, and input/clipboard control
 
 ### Pre-installed Security Tools
 
@@ -314,6 +319,13 @@ The Docker container runs a full Kali Linux desktop environment with:
 | `POST /shell/exec` | Execute shell command with timeout |
 | `POST /files/read` | Read file from container |
 | `POST /files/write` | Write file to container |
+| `GET /clipboard/get` | Read container clipboard (xclip) |
+| `POST /clipboard/set` | Set container clipboard (xclip) |
+| `POST /webrtc/offer` | WebRTC SDP offer/answer exchange |
+| `POST /webrtc/disconnect` | Close WebRTC connection |
+| `GET /window/list` | List X11 windows |
+| `POST /window/focus` | Focus a window |
+| `WS /ws/desktop` | WebSocket desktop streaming (JPEG frames + input + clipboard sync) |
 
 ### Container Management
 
