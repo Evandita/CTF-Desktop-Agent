@@ -41,8 +41,6 @@ class ContainerManager:
         }
 
         ports = {
-            "5900/tcp": cfg.vnc_port,
-            "6080/tcp": cfg.novnc_port,
             "8888/tcp": cfg.api_port,
         }
 
@@ -76,9 +74,6 @@ class ContainerManager:
 
     def get_api_url(self) -> str:
         return f"http://localhost:{self._config.api_port}"
-
-    def get_novnc_url(self) -> str:
-        return f"http://localhost:{self._config.novnc_port}/vnc.html"
 
     def get_logs(self, tail: int = 100) -> str:
         if self._container:

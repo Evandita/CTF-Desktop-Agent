@@ -19,6 +19,7 @@ from ctf_agent.tools.keyboard import TypeTextTool, PressKeyTool
 from ctf_agent.tools.shell import ExecuteCommandTool
 from ctf_agent.tools.file_ops import ReadFileTool, WriteFileTool
 from ctf_agent.tools.window import FocusWindowTool, ListWindowsTool
+from ctf_agent.tools.clipboard import ClipboardGetTool, ClipboardSetTool
 from ctf_agent.agent.core import AgentCore, AgentEvent
 
 console = Console()
@@ -38,6 +39,8 @@ def _register_tools(client: ContainerClient) -> ToolRegistry:
     registry.register(WriteFileTool(client))
     registry.register(FocusWindowTool(client))
     registry.register(ListWindowsTool(client))
+    registry.register(ClipboardGetTool(client))
+    registry.register(ClipboardSetTool(client))
     return registry
 
 
@@ -407,7 +410,7 @@ async def _interactive_claude_code(config: AppConfig, no_container: bool, api_ur
             if user_input == "/status":
                 if container_mgr:
                     console.print(f"Container: {'running' if container_mgr.is_running() else 'stopped'}")
-                    console.print(f"noVNC: {container_mgr.get_novnc_url()}")
+                    console.print(f"API: {container_mgr.get_api_url()}")
                 console.print(f"Session: {cc_provider.session_id}")
                 if hitl_manager:
                     console.print(f"HITL pending: {len(hitl_manager.get_pending_requests())}")
@@ -440,10 +443,13 @@ async def _setup_container(
     container_mgr = None
     client = None
 
-    if no_container:
-        url = api_url or f"http://localhost:{config.container.api_port}"
+    # Remote API URL from flag or config
+    remote_url = api_url or config.container.remote_api_url
+
+    if no_container or remote_url:
+        url = remote_url or f"http://localhost:{config.container.api_port}"
         client = ContainerClient(base_url=url)
-        with console.status("Connecting to container API..."):
+        with console.status(f"Connecting to container API at {url}..."):
             ready = await client.wait_until_ready(max_wait=10)
             if not ready:
                 console.print(f"[red]Cannot connect to container API at {url}[/red]")
@@ -462,7 +468,7 @@ async def _setup_container(
                 container_mgr.stop()
                 return None, None
         console.print(
-            f"[green]Container ready. noVNC: {container_mgr.get_novnc_url()}[/green]"
+            f"[green]Container ready. API: {container_mgr.get_api_url()}[/green]"
         )
 
     return container_mgr, client

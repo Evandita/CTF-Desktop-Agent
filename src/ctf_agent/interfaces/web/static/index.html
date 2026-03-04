@@ -36,8 +36,10 @@
                     <span id="container-status" class="status-badge">Connecting...</span>
                 </div>
             </div>
-            <div class="vnc-container">
-                <iframe id="vnc-frame" src="" frameborder="0" allow="fullscreen" allowfullscreen></iframe>
+            <div class="vnc-container" id="desktop-viewer-container">
+                <video id="desktop-video" autoplay playsinline muted></video>
+                <canvas id="desktop-overlay" tabindex="0"></canvas>
+                <div id="stream-status" class="stream-status">Connecting to desktop...</div>
             </div>
             <button id="sidebar-overlay-toggle" class="sidebar-overlay-toggle" onclick="toggleSidebarOverlay()" title="Toggle agent panel"></button>
             <img id="playback-screenshot" class="playback-screenshot" style="display:none" alt="Recording screenshot" />
@@ -122,6 +124,7 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=9"></script>
+    <script src="/static/webrtc-viewer.js?v=1"></script>
+    <script src="/static/app.js?v=10"></script>
 </body>
 </html>

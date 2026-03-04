@@ -222,7 +222,7 @@ async def list_tools() -> list[Tool]:
             name="ctf_container_status",
             description=(
                 "Get the status of the CTF container. Returns whether "
-                "it's running and the noVNC URL for viewing the desktop."
+                "it's running and the API URL for interacting with the desktop."
             ),
             inputSchema={
                 "type": "object",
@@ -487,15 +487,15 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
 
         elif name == "ctf_container_status":
             running = _container_mgr.is_running() if _container_mgr else False
-            novnc_url = _container_mgr.get_novnc_url() if _container_mgr else "N/A"
+            api_url = _container_mgr.get_api_url() if _container_mgr else "N/A"
             return CallToolResult(
                 content=[
                     TextContent(
                         type="text",
                         text=(
                             f"Container running: {running}\n"
-                            f"noVNC URL: {novnc_url}\n"
-                            f"Open the noVNC URL in a browser to watch the desktop live."
+                            f"API URL: {api_url}\n"
+                            f"The desktop is streamed via WebRTC through the web UI."
                         ),
                     )
                 ]

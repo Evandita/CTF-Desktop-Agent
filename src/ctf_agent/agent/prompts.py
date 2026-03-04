@@ -20,7 +20,7 @@ IMPORTANT: You MUST use the MCP tools (prefixed with mcp__ctf-desktop__) to inte
 - `mcp__ctf-desktop__ctf_execute` — Execute a shell command in the container (most used tool)
 - `mcp__ctf-desktop__ctf_read_file` — Read a file from the container filesystem
 - `mcp__ctf-desktop__ctf_write_file` — Write a file to the container filesystem
-- `mcp__ctf-desktop__ctf_container_status` — Check container status and get noVNC URL
+- `mcp__ctf-desktop__ctf_container_status` — Check container status and API URL
 - `mcp__ctf-desktop__ctf_focus_window` — Bring a window to the foreground (by name, class, or ID)
 - `mcp__ctf-desktop__ctf_list_windows` — List all visible windows on the desktop
 

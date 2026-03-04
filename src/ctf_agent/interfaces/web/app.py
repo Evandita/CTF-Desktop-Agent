@@ -28,6 +28,7 @@ from ctf_agent.tools.keyboard import TypeTextTool, PressKeyTool
 from ctf_agent.tools.shell import ExecuteCommandTool
 from ctf_agent.tools.file_ops import ReadFileTool, WriteFileTool
 from ctf_agent.tools.window import FocusWindowTool, ListWindowsTool
+from ctf_agent.tools.clipboard import ClipboardGetTool, ClipboardSetTool
 from ctf_agent.agent.core import AgentCore, AgentEvent
 
 logger = logging.getLogger(__name__)
@@ -61,12 +62,19 @@ async def startup():
     _config = load_config()
     _provider_mode = _config.llm.provider
 
-    from ctf_agent.config.models import ContainerConfig as CC
-    _container_mgr = ContainerManager(CC(**_config.container.model_dump()))
-    _container_mgr.start()
-
-    _client = ContainerClient(base_url=_container_mgr.get_api_url())
-    await _client.wait_until_ready(max_wait=120)
+    remote_url = _config.container.remote_api_url
+    if remote_url:
+        # Remote target mode — skip Docker, connect directly
+        logger.info(f"Connecting to remote target at {remote_url}")
+        _client = ContainerClient(base_url=remote_url)
+        await _client.wait_until_ready(max_wait=60)
+    else:
+        # Local Docker mode
+        from ctf_agent.config.models import ContainerConfig as CC
+        _container_mgr = ContainerManager(CC(**_config.container.model_dump()))
+        _container_mgr.start()
+        _client = ContainerClient(base_url=_container_mgr.get_api_url())
+        await _client.wait_until_ready(max_wait=120)
 
     # Initialize HITL if enabled
     if _config.hitl.enabled:
@@ -88,7 +96,7 @@ async def startup():
                 _config.container.screen_width, _config.container.screen_height
             ),
             max_turns=_config.agent.max_iterations,
-            container_api_url=_container_mgr.get_api_url() if _container_mgr else None,
+            container_api_url=_get_api_url(),
             hitl_config=_config.hitl if _config.hitl.enabled else None,
             hitl_bridge_port=9999 if _hitl_bridge_server else None,
         )
@@ -150,6 +158,15 @@ async def chat(req: ChatRequest):
     return {"status": "started", "message": req.message}
 
 
+def _get_api_url() -> str | None:
+    """Return the container API URL (remote or local Docker)."""
+    if _config and _config.container.remote_api_url:
+        return _config.container.remote_api_url
+    if _container_mgr:
+        return _container_mgr.get_api_url()
+    return None
+
+
 @app.get("/api/status")
 async def status():
     ctx = {}
@@ -161,11 +178,14 @@ async def status():
             "enabled": True,
             "pending_count": len(_hitl_manager.get_pending_requests()),
         }
+    container_running = True if (_config and _config.container.remote_api_url) else (
+        _container_mgr.is_running() if _container_mgr else False
+    )
     return {
         "provider": _provider_mode,
-        "container_running": _container_mgr.is_running() if _container_mgr else False,
+        "container_running": container_running,
         "context": ctx,
-        "novnc_url": _container_mgr.get_novnc_url() if _container_mgr else None,
+        "container_api_url": _get_api_url(),
         "hitl": hitl_info,
     }
 
@@ -211,6 +231,50 @@ async def hitl_respond(req: HITLResponseRequest):
     )
     ok = _hitl_manager.submit_response(req.request_id, response)
     return {"status": "ok" if ok else "not_found"}
+
+
+# ---------------------------------------------------------------------------
+# WebRTC signaling proxy (so browser only talks to port 8080)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/webrtc/offer")
+async def proxy_webrtc_offer(data: dict):
+    """Proxy WebRTC offer to the container API signaling endpoint."""
+    import httpx
+    api_url = _get_api_url()
+    if not api_url:
+        return {"error": "Container not running"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.post(f"{api_url}/webrtc/offer", json=data)
+            if resp.status_code != 200:
+                return {"error": f"Container returned {resp.status_code}", "detail": resp.text[:500]}
+            return resp.json()
+    except httpx.ConnectError:
+        return {"error": "Cannot connect to container API"}
+    except Exception as e:
+        logger.warning(f"WebRTC offer proxy failed: {e}")
+        return {"error": str(e)}
+
+
+@app.post("/api/webrtc/disconnect")
+async def proxy_webrtc_disconnect(data: dict):
+    """Proxy WebRTC disconnect to the container API."""
+    import httpx
+    api_url = _get_api_url()
+    if not api_url:
+        return {"error": "Container not running"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.post(f"{api_url}/webrtc/disconnect", json=data)
+            if resp.status_code != 200:
+                return {"error": f"Container returned {resp.status_code}"}
+            return resp.json()
+    except httpx.ConnectError:
+        return {"error": "Cannot connect to container API"}
+    except Exception as e:
+        logger.warning(f"WebRTC disconnect proxy failed: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/api/recordings")
@@ -358,4 +422,6 @@ def _register_tools(client: ContainerClient) -> ToolRegistry:
     registry.register(WriteFileTool(client))
     registry.register(FocusWindowTool(client))
     registry.register(ListWindowsTool(client))
+    registry.register(ClipboardGetTool(client))
+    registry.register(ClipboardSetTool(client))
     return registry

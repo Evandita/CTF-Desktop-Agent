@@ -309,6 +309,22 @@ async function clearContext() {
     updateStatus();
 }
 
+// ============================
+// WebRTC Desktop Viewer
+// ============================
+
+let _desktopViewer = null;
+
+function initDesktopViewer(signalingUrl, containerApiUrl) {
+    if (_desktopViewer) return;
+    const video = document.getElementById('desktop-video');
+    const canvas = document.getElementById('desktop-overlay');
+    if (!video || !canvas) return;
+    _desktopViewer = new DesktopViewer(video, canvas, signalingUrl, containerApiUrl);
+    _desktopViewer.connect();
+}
+
+
 async function updateStatus() {
     try {
         const resp = await fetch('/api/status');
@@ -316,11 +332,9 @@ async function updateStatus() {
         msgCount.textContent = data.context?.message_count || 0;
         imgCount.textContent = data.context?.image_count || 0;
 
-        if (data.novnc_url) {
-            const frame = document.getElementById('vnc-frame');
-            if (!frame.src || frame.src === window.location.href) {
-                frame.src = data.novnc_url + '?autoconnect=true&resize=scale';
-            }
+        // Initialize desktop viewer when container is running
+        if (data.container_running && !_desktopViewer) {
+            initDesktopViewer('/api/webrtc', data.container_api_url);
         }
 
         if (data.container_running) {
@@ -381,18 +395,18 @@ function backToSessions() {
 
 function showPlaybackScreenshot(sessionId, filename) {
     const img = document.getElementById('playback-screenshot');
-    const iframe = document.getElementById('vnc-frame');
+    const viewerContainer = document.getElementById('desktop-viewer-container');
     img.src = `/api/recordings/${sessionId}/screenshot/${filename}`;
     img.style.display = 'block';
-    iframe.style.visibility = 'hidden';
+    if (viewerContainer) viewerContainer.style.visibility = 'hidden';
     document.getElementById('desktop-title').textContent = 'Recording Playback';
 }
 
 function hidePlaybackScreenshot() {
     const img = document.getElementById('playback-screenshot');
-    const iframe = document.getElementById('vnc-frame');
+    const viewerContainer = document.getElementById('desktop-viewer-container');
     img.style.display = 'none';
-    iframe.style.visibility = 'visible';
+    if (viewerContainer) viewerContainer.style.visibility = 'visible';
     document.getElementById('desktop-title').textContent = 'Live Desktop';
 }
 

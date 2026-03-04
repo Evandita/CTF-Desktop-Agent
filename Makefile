@@ -28,7 +28,7 @@ endif
 # Run just the container (for development)
 container:
 	docker run -d --name ctf-agent-desktop \
-		-p 5900:5900 -p 6080:6080 -p 8888:8888 \
+		-p 8888:8888 \
 		-e SCREEN_WIDTH=1024 -e SCREEN_HEIGHT=768 \
 		ctf-desktop-agent:latest
 

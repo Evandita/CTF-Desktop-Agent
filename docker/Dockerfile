@@ -2,8 +2,6 @@ FROM kalilinux/kali-rolling
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
-    VNC_PORT=5900 \
-    NOVNC_PORT=6080 \
     API_PORT=8888 \
     SCREEN_WIDTH=1024 \
     SCREEN_HEIGHT=768 \
@@ -15,7 +13,7 @@ RUN rm -rf /var/lib/apt/lists/* \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
     xfce4 xfce4-terminal dbus-x11 \
-    tigervnc-standalone-server tigervnc-common novnc websockify \
+    xvfb \
     xdotool scrot imagemagick xclip xsel \
     supervisor curl wget git python3 python3-pip python3-venv \
     net-tools procps htop tmux vim nano \
@@ -36,6 +34,8 @@ RUN rm -rf /var/lib/apt/lists/* \
     firefox-esr \
     build-essential gcc g++ make \
     python3-dev libffi-dev libssl-dev \
+    libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev \
+    libswscale-dev libswresample-dev pkg-config \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # GDB enhancements: pwndbg
@@ -67,6 +67,6 @@ RUN useradd -m -s /bin/bash ctfuser \
     && mkdir -p /home/ctfuser/Desktop /home/ctfuser/challenges \
     && chown -R ctfuser:ctfuser /home/ctfuser
 
-EXPOSE ${VNC_PORT} ${NOVNC_PORT} ${API_PORT}
+EXPOSE ${API_PORT}
 
 ENTRYPOINT ["/entrypoint.sh"]

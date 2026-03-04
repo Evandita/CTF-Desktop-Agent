@@ -149,5 +149,15 @@ class ContainerClient:
         windows = [WindowInfo(**w) for w in data["windows"]]
         return windows, data.get("active_window_id")
 
+    async def clipboard_get(self) -> dict:
+        resp = await self._http.get("/clipboard/get")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def clipboard_set(self, text: str) -> dict:
+        resp = await self._http.post("/clipboard/set", json={"text": text})
+        resp.raise_for_status()
+        return resp.json()
+
     async def close(self) -> None:
         await self._http.aclose()

@@ -48,6 +48,8 @@ def load_config() -> AppConfig:
         config.agent.max_iterations = int(os.environ["CTF_MAX_ITERATIONS"])
     if os.environ.get("CTF_LOG_LEVEL"):
         config.log_level = os.environ["CTF_LOG_LEVEL"]
+    if os.environ.get("CTF_REMOTE_API_URL"):
+        config.container.remote_api_url = os.environ["CTF_REMOTE_API_URL"]
 
     # HITL overrides
     if os.environ.get("CTF_HITL_ENABLED"):

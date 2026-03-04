@@ -8,8 +8,6 @@ llm:
 container:
   image_name: "ctf-desktop-agent:latest"
   container_name: "ctf-agent-desktop"
-  vnc_port: 5900
-  novnc_port: 6080
   api_port: 8888
   screen_width: 1024
   screen_height: 768

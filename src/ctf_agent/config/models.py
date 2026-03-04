@@ -14,14 +14,13 @@ class LLMConfig(BaseModel):
 class ContainerConfig(BaseModel):
     image_name: str = "ctf-desktop-agent:latest"
     container_name: str = "ctf-agent-desktop"
-    vnc_port: int = 5900
-    novnc_port: int = 6080
     api_port: int = 8888
     screen_width: int = 1024
     screen_height: int = 768
     memory_limit: str = "4g"
     cpu_count: int = 2
     network_mode: str = "bridge"
+    remote_api_url: Optional[str] = None  # Connect to remote target instead of Docker
 
 
 class AgentConfig(BaseModel):

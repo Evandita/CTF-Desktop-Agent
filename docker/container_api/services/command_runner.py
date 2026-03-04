@@ -80,7 +80,7 @@ def run_command_visible(
 ) -> CommandResult:
     """Execute a command visibly in the tmux terminal session.
 
-    The command appears in the terminal window on the desktop (visible via noVNC)
+    The command appears in the terminal window on the desktop (visible via WebRTC)
     while stdout/stderr/exitcode are captured via temp files for programmatic use.
 
     Falls back to run_command_silent() if tmux is unavailable.
@@ -91,7 +91,7 @@ def run_command_visible(
         logger.warning("tmux session unavailable, falling back to silent execution")
         return run_command_silent(command, timeout, working_dir)
 
-    # Auto-raise the terminal window so the command is visible via noVNC
+    # Auto-raise the terminal window so the command is visible on the desktop
     raise_terminal()
 
     cmd_file = os.path.join(EXEC_TEMP_DIR, f"{exec_id}.cmd")
