@@ -20,6 +20,7 @@ class ContainerConfig(BaseModel):
     memory_limit: str = "4g"
     cpu_count: int = 2
     network_mode: str = "bridge"
+    volume_name: str = "ctf-agent-userdata"  # Named volume for /home/ctfuser persistence
     remote_api_url: Optional[str] = None  # Connect to remote target instead of Docker
 
 

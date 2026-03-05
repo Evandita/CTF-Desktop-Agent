@@ -13,6 +13,7 @@ container:
   screen_height: 768
   memory_limit: "4g"
   cpu_count: 2
+  volume_name: "ctf-agent-userdata"
 
 agent:
   max_iterations: 50

@@ -91,6 +91,7 @@ claude
 - **Full Kali Linux desktop** in Docker with XFCE4 and XVFB
 - **Live desktop streaming** via WebRTC (with WebSocket JPEG fallback for Docker environments)
 - **Bidirectional clipboard sharing** — VirtualBox-style modes: Disabled, Host→Guest, Guest→Host, Bidirectional
+- **Persistent state**: container reuse across restarts + Docker volume for user data (`/home/ctfuser`) that survives rebuilds. Auto-restores `apt` packages from `~/.extra-packages`.
 - **3 LLM backends**: Claude API, Ollama (local), or Claude Code CLI
 - **Tool-based agent**: screenshot, mouse, keyboard, shell commands, file I/O
 - **Human-in-the-Loop (HITL)**: tool approval, periodic checkpoints, agent-to-human questions
@@ -134,12 +135,33 @@ For detailed technical documentation (all config options, API endpoints, WebSock
 
 ```bash
 pip install -e ".[dev]"       # Install with dev dependencies
-make container                # Run container separately for development
+make container                # Run container (with persistent volume)
 ctf-agent interactive --no-container  # Connect to existing container
 make test                     # Run tests
 make lint                     # Lint with ruff
 make clean                    # Clean build artifacts
 ```
+
+### Container Management
+
+The container persists state across restarts and rebuilds:
+
+```bash
+make container                # Start container (reuses existing if present)
+make container-stop           # Stop container (state preserved for restart)
+make container-destroy        # Remove container (volume kept, user data safe)
+make container-clean          # Full reset: remove container + volume
+```
+
+User data in `/home/ctfuser` (downloads, browser profiles, SSH keys, shell history, Python venvs) is stored on a Docker volume and survives container removal and image rebuilds.
+
+To auto-restore `apt` packages after a rebuild, add them inside the container:
+
+```bash
+echo "package-name" >> ~/.extra-packages
+```
+
+Packages listed in `~/.extra-packages` are automatically installed on container startup.
 
 ## Requirements
 

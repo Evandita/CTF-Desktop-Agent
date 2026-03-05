@@ -24,17 +24,26 @@ class ContainerManager:
         logger.info("Image built successfully")
 
     def start(self) -> str:
-        """Start the container. Returns the container ID."""
+        """Start the container, reusing an existing one if possible. Returns the container ID."""
         cfg = self._config
 
-        # Remove existing container with same name if it exists
+        # Try to reuse an existing container
         try:
             existing = self._docker.containers.get(cfg.container_name)
-            logger.info(f"Removing existing container {cfg.container_name}")
-            existing.remove(force=True)
+            existing.reload()
+            if existing.status == "running":
+                logger.info(f"Reusing running container {cfg.container_name}")
+                self._container = existing
+                return existing.id
+            else:
+                logger.info(f"Restarting stopped container {cfg.container_name}")
+                existing.start()
+                self._container = existing
+                return existing.id
         except docker.errors.NotFound:
             pass
 
+        # No existing container — create a new one with persistent volume
         environment = {
             "SCREEN_WIDTH": str(cfg.screen_width),
             "SCREEN_HEIGHT": str(cfg.screen_height),
@@ -42,6 +51,10 @@ class ContainerManager:
 
         ports = {
             "8888/tcp": cfg.api_port,
+        }
+
+        volumes = {
+            cfg.volume_name: {"bind": "/home/ctfuser", "mode": "rw"},
         }
 
         self._container = self._docker.containers.run(
@@ -53,16 +66,29 @@ class ContainerManager:
             mem_limit=cfg.memory_limit,
             nano_cpus=cfg.cpu_count * 1_000_000_000,
             network_mode=cfg.network_mode,
+            volumes=volumes,
             remove=False,
         )
         logger.info(f"Container started: {self._container.id[:12]}")
         return self._container.id
 
     def stop(self) -> None:
-        """Stop and remove the container."""
+        """Stop the container (without removing it, so it can be restarted later)."""
         if self._container:
-            logger.info(f"Stopping container {self._container.id[:12]}")
-            self._container.stop(timeout=10)
+            self._container.reload()
+            if self._container.status == "running":
+                logger.info(f"Stopping container {self._container.id[:12]}")
+                self._container.stop(timeout=10)
+            self._container = None
+
+    def destroy(self) -> None:
+        """Stop and permanently remove the container."""
+        if self._container:
+            self._container.reload()
+            if self._container.status == "running":
+                logger.info(f"Stopping container {self._container.id[:12]}")
+                self._container.stop(timeout=10)
+            logger.info(f"Removing container {self._container.id[:12]}")
             self._container.remove()
             self._container = None
 
